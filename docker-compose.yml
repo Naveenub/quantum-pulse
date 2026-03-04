@@ -1,0 +1,49 @@
+version: "3.9"
+
+services:
+  # ── MongoDB ──────────────────────────────────────────────────────────────
+  mongo:
+    image: mongo:7.0
+    container_name: qp-mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: quantum_pulse
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── QUANTUM-PULSE API ─────────────────────────────────────────────────────
+  quantum-pulse:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: quantum-pulse
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      QUANTUM_MONGO_URI:    mongodb://mongo:27017
+      QUANTUM_MONGO_DB:     quantum_pulse
+      QUANTUM_PASSPHRASE:   ${QUANTUM_PASSPHRASE:-change-me-in-production}
+      QUANTUM_HOST:         0.0.0.0
+      QUANTUM_PORT:         8747
+      QUANTUM_LOG_LEVEL:    INFO
+    ports:
+      - "8747:8747"
+    volumes:
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8747/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  mongo_data:
