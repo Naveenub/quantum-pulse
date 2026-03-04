@@ -1,0 +1,99 @@
+name: QUANTUM-PULSE CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  QUANTUM_PASSPHRASE: ci-test-passphrase-16-chars-minimum
+  QUANTUM_API_KEYS:   ci-test-key
+  QUANTUM_ENVIRONMENT: development
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # ── Lint ───────────────────────────────────────────────────────────────── #
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install ruff mypy
+      - run: ruff check core/ models/ main.py cli.py
+      - run: ruff format --check core/ models/ main.py cli.py
+      - run: mypy core/ models/ --ignore-missing-imports || true
+
+  # ── Unit tests ─────────────────────────────────────────────────────────── #
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements.txt pytest pytest-asyncio pytest-cov httpx
+      - name: Run unit tests
+        run: |
+          pytest tests/test_engine.py -v --asyncio-mode=auto \
+            --cov=core --cov=models --cov-report=xml
+      - uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+
+  # ── API integration tests ──────────────────────────────────────────────── #
+  api-tests:
+    name: API Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements.txt pytest pytest-asyncio pytest-cov httpx
+      - name: Run API tests
+        run: |
+          pytest tests/test_api.py -v --asyncio-mode=auto
+
+  # ── Benchmark (non-blocking) ────────────────────────────────────────────── #
+  benchmark:
+    name: Performance Benchmark
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Run benchmark
+        run: python scripts/benchmark_demo.py 2>&1 | tail -20
+
+  # ── Docker build ───────────────────────────────────────────────────────── #
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs: [lint, unit-tests]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker image
+        run: docker build -t quantum-pulse:${{ github.sha }} .
+      - name: Test container health
+        run: |
+          docker run -d \
+            -e QUANTUM_PASSPHRASE="${{ env.QUANTUM_PASSPHRASE }}" \
+            -e QUANTUM_ENVIRONMENT=development \
+            -p 8747:8747 \
+            --name qp-test \
+            quantum-pulse:${{ github.sha }}
+          sleep 5
+          curl -f http://localhost:8747/health || (docker logs qp-test && exit 1)
+          docker stop qp-test
