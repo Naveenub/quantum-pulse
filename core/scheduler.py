@@ -128,28 +128,51 @@ class QuantumScheduler:
         self,
         engine_fn:  Callable,
         db_fn:      Callable,
-        interval_s: int = 86400,   # 24h
+        interval_s: int = 86400,   # 24h fallback (adaptive already retrains per-upload)
     ) -> None:
         """
-        Every 24h, sample recent pulses from the DB and retrain the Zstd dict.
-        This keeps compression gains high as the data distribution evolves.
+        Daily deep retrain: pulls recent unsealed payloads from the DB and
+        feeds them into the adaptive dict manager for a forced retrain.
+
+        The adaptive manager already retrains every 50 seals (incremental).
+        This job is the daily full-corpus sweep for when the distribution drifts.
         """
         async def _job():
             engine = engine_fn()
             db     = db_fn()
             try:
-                recent = await db.list_pulses(limit=200)
-                if len(recent) < 20:
-                    logger.debug("Not enough pulses for dict retrain ({})", len(recent))
+                if engine._adaptive is None:
+                    logger.debug("Adaptive dict not wired — skipping scheduled retrain")
                     return
 
-                # Use pulse_id list as a proxy for data diversity
-                samples = [
-                    str(p.get("pulse_id", "") + str(p.get("created_at", ""))).encode()
-                    for p in recent
-                ]
-                await engine.bootstrap_dict(samples)
-                logger.success("Zstd dict retrained from {} recent pulses", len(samples))
+                stats = engine._adaptive.stats()
+                logger.info(
+                    "Scheduled dict retrain  v{}  buffer={}  total_seals={}",
+                    stats["current_version"],
+                    stats["buffer_size"],
+                    stats["total_seals"],
+                )
+
+                if stats["buffer_size"] < 20:
+                    logger.debug("Buffer too small ({}) for retrain", stats["buffer_size"])
+                    return
+
+                result = await engine._adaptive.force_retrain()
+                if result:
+                    if result.committed:
+                        logger.success(
+                            "Scheduled retrain committed  v{}→v{}  "
+                            "ratio {:.2f}×→{:.2f}×  +{:.1f}%",
+                            result.old_version, result.new_version,
+                            result.old_ratio, result.new_ratio, result.improvement,
+                        )
+                    else:
+                        logger.info(
+                            "Scheduled retrain: no improvement  "
+                            "{:.2f}×→{:.2f}×  {:.1f}%  keeping v{}",
+                            result.old_ratio, result.new_ratio,
+                            result.improvement, result.old_version,
+                        )
             except Exception as exc:
                 logger.warning("Dict retrain failed: {}", exc)
 

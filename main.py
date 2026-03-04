@@ -50,6 +50,7 @@ from core.middleware  import apply_middleware
 from core.retry       import db_bulkhead, mongo_circuit, with_retry
 from core.scanner     import QuantumScanner
 from core.scheduler   import scheduler
+from core.adaptive    import adaptive_dict
 from core.vault       import QuantumVault
 from models.pulse_models import MasterPulse, PulseBlob, ScanMode
 
@@ -115,7 +116,8 @@ async def lifespan(app: FastAPI):
     logger.info("━━━ QUANTUM-PULSE 1.0.0 ━━━  env={}", cfg.environment.value)
 
     state.db         = PulseDB(cfg.mongo_uri, cfg.mongo_db)
-    state.engine     = QuantumEngine(passphrase=cfg.passphrase.get_secret_value())
+    state.engine     = QuantumEngine(passphrase=cfg.passphrase.get_secret_value(),
+                                      adaptive_dict=adaptive_dict)
     state.compressor = PulseCompressor(state.engine._trainer)
     state.vault      = QuantumVault(passphrase=cfg.passphrase.get_secret_value(), cache_ttl=cfg.key_cache_ttl_s)
 
@@ -350,11 +352,53 @@ async def rotate_shard(pulse_id: str, req: RotateRequest, request: Request,
 @app.get("/vault/info", tags=["vault"])
 async def vault_info(p: Principal = Depends(require_scope("admin"))) -> dict:
     vk = await state.vault.unlock()
+    adaptive_stats = state.engine._adaptive.stats() if state.engine._adaptive else None
     return {
-        "salt_prefix": vk.salt_hex[:16] + "…",
-        "key_cache_size": len(state.vault._cache),
-        "kdf": "PBKDF2-SHA256", "iterations": cfg.kdf_iterations, "key_bits": 256,
-        "circuit_breaker": mongo_circuit.status(), "bulkhead": db_bulkhead.status(),
+        "salt_prefix":     vk.salt_hex[:16] + "…",
+        "key_cache_size":  len(state.vault._cache),
+        "kdf":             "PBKDF2-SHA256",
+        "iterations":      cfg.kdf_iterations,
+        "key_bits":        256,
+        "circuit_breaker": mongo_circuit.status(),
+        "bulkhead":        db_bulkhead.status(),
+        "adaptive_dict":   adaptive_stats,
+    }
+
+
+@app.get("/vault/adaptive", tags=["vault"])
+async def adaptive_dict_stats(p: Principal = Depends(require_scope("read"))) -> dict:
+    """
+    Live adaptive dictionary stats.
+    Shows current version, compression ratio, seals until next retrain,
+    and full version history.
+    """
+    if state.engine._adaptive is None:
+        return {"enabled": False}
+    stats = state.engine._adaptive.stats()
+    versions = [
+        {
+            "version":       dv.version,
+            "dict_id":       dv.dict_id,
+            "trained_at":    dv.trained_at,
+            "sample_count":  dv.sample_count,
+            "baseline_ratio": round(dv.baseline_ratio, 3),
+            "size_kb":       round(len(dv.raw_bytes) / 1024, 1),
+        }
+        for dv in state.engine._adaptive._versions
+    ]
+    return {
+        "enabled":             True,
+        "current_version":     stats["current_version"],
+        "dict_id":             stats["dict_id"],
+        "is_trained":          stats["is_trained"],
+        "total_seals":         stats["total_seals"],
+        "seals_since_retrain": stats["seals_since_retrain"],
+        "seals_until_retrain": stats["seals_until_retrain"],
+        "buffer_size":         stats["buffer_size"],
+        "latest_ratio":        stats["latest_ratio"],
+        "retrain_every_n":     stats["retrain_every_n"],
+        "min_improvement_pct": stats["min_improvement_pct"],
+        "version_history":     versions,
     }
 
 

@@ -45,6 +45,15 @@ from models.pulse_models import (
     PulseStatus,
 )
 
+# Adaptive dict manager — imported lazily to avoid circular dependency
+_ADAPTIVE_CLS = None
+def _adaptive_cls():
+    global _ADAPTIVE_CLS
+    if _ADAPTIVE_CLS is None:
+        from core.adaptive import AdaptiveDictManager  # noqa: PLC0415
+        _ADAPTIVE_CLS = AdaptiveDictManager
+    return _ADAPTIVE_CLS
+
 # ─────────────────────────────── constants ────────────────────────────────── #
 
 ZSTD_LEVEL:              Final[int]   = 22
@@ -255,10 +264,12 @@ class QuantumEngine:
         passphrase: str,
         *,
         dict_trainer: Optional[ZstdDictTrainer] = None,
+        adaptive_dict = None,   # Optional[AdaptiveDictManager]
         aad: bytes = b"QUANTUM-PULSE-v1",
     ) -> None:
         self._passphrase  = passphrase
         self._trainer     = dict_trainer or ZstdDictTrainer()
+        self._adaptive    = adaptive_dict  # wired in by main.py lifespan
         self._aad         = aad
         logger.info(
             "QuantumEngine ready  zstd=L{}  window={}  aes=256-GCM  kdf=PBKDF2-{}k",
@@ -281,6 +292,10 @@ class QuantumEngine:
 
         # 1. MsgPack
         packed = msgpack.packb(payload, use_bin_type=True)
+
+        # 1b. Feed sample to adaptive dict manager (non-blocking, best-effort)
+        if self._adaptive is not None:
+            asyncio.ensure_future(self._adaptive.record_seal(packed))
 
         # 2. Zstd (CPU-heavy → pool)
         compressed: bytes = await loop.run_in_executor(_CPU_POOL, self._compress, packed)
@@ -311,6 +326,7 @@ class QuantumEngine:
             duration_ms      = duration_ms,
             entropy_bits_per_byte = entropy,
         )
+        dict_ver = self._adaptive.current_version if self._adaptive else 0
         meta = PulseBlob(
             pulse_id     = pulse_id,
             parent_id    = parent_id,
@@ -318,7 +334,9 @@ class QuantumEngine:
             chunk_hash   = chunk_hash,
             salt         = vk.salt_hex,
             nonce        = nonce.hex(),
-            zstd_dict_id = self._trainer.dict_id,
+            zstd_dict_id = (self._adaptive.dict_id if self._adaptive and self._adaptive.is_trained
+                            else self._trainer.dict_id),
+            dict_version = dict_ver,
             stats        = stats,
             tags         = tags or {},
         )
@@ -359,9 +377,10 @@ class QuantumEngine:
             _CPU_POOL, self._decrypt, ciphertext, vk.raw, nonce
         )
 
-        # Decompress
+        # Decompress (use dict version recorded at seal time)
+        dict_ver = getattr(meta, "dict_version", 0)
         packed: bytes = await loop.run_in_executor(
-            _CPU_POOL, self._decompress, compressed
+            _CPU_POOL, self._decompress, compressed, dict_ver
         )
 
         # MsgPack deserialise
@@ -391,9 +410,19 @@ class QuantumEngine:
         yield msgpack.packb(payload, use_bin_type=True)
 
     async def bootstrap_dict(self, raw_samples: list[bytes]) -> None:
-        """Train Zstd dict from first ZSTD_DICT_SAMPLE_RATIO of corpus."""
+        """Train Zstd dict from corpus samples; also feeds the adaptive manager."""
         n      = max(1, int(len(raw_samples) * ZSTD_DICT_SAMPLE_RATIO))
         subset = raw_samples[:n]
+        # Feed adaptive manager (preferred path)
+        if self._adaptive is not None:
+            for s in subset:
+                self._adaptive._buffer.append(s)
+            result = await self._adaptive.force_retrain(extra_samples=None)
+            if result and result.committed:
+                logger.info("Adaptive dict bootstrapped  v{}  ratio={:.2f}×",
+                            result.new_version, result.new_ratio)
+                return
+        # Fallback to legacy trainer
         await self._trainer.train_async(subset)
         logger.info("Dict bootstrap done  samples_used={}", n)
 
@@ -425,9 +454,17 @@ class QuantumEngine:
     # ── sync internals (run in thread pool) ────────────────────────────────── #
 
     def _compress(self, data: bytes) -> bytes:
+        if self._adaptive is not None and self._adaptive.is_trained:
+            return self._adaptive.compressor().compress(data)
         return self._trainer.compressor().compress(data)
 
-    def _decompress(self, data: bytes) -> bytes:
+    def _decompress(self, data: bytes, dict_version: int = 0) -> bytes:
+        if self._adaptive is not None and dict_version > 0:
+            return self._adaptive.decompressor_for_version(dict_version).decompress(data)
+        if self._adaptive is not None and self._adaptive.is_trained:
+            # current version decompressor
+            dv = self._adaptive.current_version
+            return self._adaptive.decompressor_for_version(dv).decompress(data)
         return self._trainer.decompressor().decompress(data)
 
     def _encrypt(self, plaintext: bytes, key: bytes, nonce: bytes) -> bytes:

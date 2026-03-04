@@ -92,6 +92,7 @@ class PulseBlob(BaseModel):
     salt:         str
     nonce:        str
     zstd_dict_id: Optional[int] = None
+    dict_version: int             = 0    # adaptive dict version used at seal time
     stats:        CompressionStats
     status:       PulseStatus   = PulseStatus.SEALED
     created_at:   float         = Field(default_factory=time.time)
