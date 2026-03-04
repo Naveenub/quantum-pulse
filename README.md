@@ -62,7 +62,7 @@ Full details: [BENCHMARKS.md](BENCHMARKS.md)
 
 ```bash
 # 1. Clone and install
-git clone https://github.com/YOUR_USERNAME/quantum-pulse
+git clone https://github.com/Naveenub/quantum-pulse.git
 cd quantum-pulse
 pip install -r requirements.txt
 
