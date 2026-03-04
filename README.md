@@ -58,6 +58,7 @@ Full details: [BENCHMARKS.md](BENCHMARKS.md)
 
 ---
 
+
 ## Quick Start
 
 ```bash
@@ -131,6 +132,65 @@ dict → MsgPack → Zstd-L22+corpus-dict → AES-256-GCM → SHA3-256 Merkle
 ### Wire Format
 ```
 [ MAGIC 4B ][ VER 1B ][ NONCE 12B ][ CIPHERTEXT + GCM-TAG ]
+```
+
+---
+
+## Repository Structure
+
+```
+quantum-pulse/
+├── .env.example                        # all environment variables with defaults
+├── .github/
+│   ├── ISSUE_TEMPLATE/
+│   │   ├── benchmark.md                # community benchmark submission template
+│   │   ├── bug_report.md               # structured bug report template
+│   │   └── feature_request.md          # feature proposal template
+│   ├── PULL_REQUEST_TEMPLATE.md        # PR checklist
+│   └── workflows/
+│       └── ci.yml                      # GitHub Actions: lint → test → bench → docker
+├── .gitignore
+├── BENCHMARKS.md                       # full benchmark results vs gzip/lz4/brotli/zstd
+├── CODE_OF_CONDUCT.md
+├── CONTRIBUTING.md                     # contribution guide, design principles, structure
+├── Dockerfile
+├── LICENSE                             # MIT
+├── Makefile                            # make test / bench / lint / docker-up / run
+├── README.md
+├── SECURITY.md                         # responsible disclosure policy
+├── benchmarks/
+│   └── community/                      # submit your benchmark results here
+│       └── README.md
+├── cli.py                              # qp CLI (seal / unseal / scan / rotate / health …)
+├── core/
+│   ├── adaptive.py                     # AdaptiveDictManager — self-improving dict, A/B versioning
+│   ├── audit.py                        # append-only audit log (JSONL + MongoDB)
+│   ├── auth.py                         # API key + JWT authentication, scope-based access
+│   ├── compression.py                  # PulseCompressor — async Zstd wrapper + streaming
+│   ├── config.py                       # Pydantic Settings V2 — all config, secrets, validation
+│   ├── db.py                           # MongoDB / in-memory storage backend
+│   ├── engine.py                       # QuantumEngine — MsgPack→Zstd→AES-GCM→Merkle pipeline
+│   ├── health.py                       # liveness / readiness / startup probes
+│   ├── interface.py                    # virtual mount filesystem (FUSE-like)
+│   ├── metrics.py                      # Prometheus counters, histograms, gauges
+│   ├── middleware.py                   # HTTP stack: CORS, security headers, RFC 7807 errors
+│   ├── retry.py                        # circuit breaker, bulkhead, exponential backoff
+│   ├── scanner.py                      # async directory scanner → seal pipeline
+│   ├── scheduler.py                    # APScheduler background jobs
+│   └── vault.py                        # PBKDF2 + HKDF key derivation, rotation
+├── docker-compose.yml                  # MongoDB + QUANTUM-PULSE, one command
+├── main.py                             # FastAPI app — all endpoints wired together
+├── models/
+│   └── pulse_models.py                 # Pydantic V2 models: PulseBlob, MasterPulse, …
+├── pyproject.toml                      # project metadata, ruff, mypy, coverage config
+├── requirements.txt
+├── scripts/
+│   ├── benchmark_compare.py            # head-to-head vs snappy/lz4/gzip/brotli/zstd
+│   ├── benchmark_demo.py               # full seal/unseal/Merkle pipeline benchmark
+│   └── gen_corpus.py                   # reproducible LLM training corpus generator
+└── tests/
+    ├── test_api.py                     # 27 FastAPI integration tests (full HTTP stack)
+    └── test_engine.py                  # 27 unit tests (core compression/crypto pipeline)
 ```
 
 ---
