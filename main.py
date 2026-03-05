@@ -21,7 +21,7 @@ import os
 import time
 import uuid
 from contextlib import asynccontextmanager
-from typing import Any, Optional
+from typing import Any
 
 import msgpack
 import uvicorn
@@ -33,26 +33,36 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from core.audit       import audit_logger
-from core.auth        import Principal, auth_router, require_scope
+from core.adaptive import adaptive_dict
+from core.audit import audit_logger
+from core.auth import Principal, auth_router, require_scope
 from core.compression import PulseCompressor
-from core.config      import get_settings
-from core.db          import PulseDB
-from core.engine      import QuantumEngine
-from core.health      import create_health_router, mark_startup_complete
-from core.interface   import create_interface_router, mount_manager
-from core.metrics     import (
-    compression_ratio, db_operations_total, entropy_score, key_rotations_total,
-    master_pulses_total, metrics_router, pulse_bytes_encrypted, pulse_bytes_original,
-    scan_duration_ms, scan_files_total, shards_per_master, track_seal, track_unseal,
+from core.config import get_settings
+from core.db import PulseDB
+from core.engine import QuantumEngine
+from core.health import create_health_router, mark_startup_complete
+from core.interface import create_interface_router, mount_manager
+from core.metrics import (
+    compression_ratio,
+    db_operations_total,
+    entropy_score,
+    key_rotations_total,
+    master_pulses_total,
+    metrics_router,
+    pulse_bytes_encrypted,
+    pulse_bytes_original,
+    scan_duration_ms,
+    scan_files_total,
+    shards_per_master,
+    track_seal,
+    track_unseal,
 )
-from core.middleware  import apply_middleware
-from core.retry       import db_bulkhead, mongo_circuit, with_retry
-from core.scanner     import QuantumScanner
-from core.scheduler   import scheduler
-from core.adaptive    import adaptive_dict
-from core.vault       import QuantumVault
-from models.pulse_models import MasterPulse, PulseBlob, ScanMode
+from core.middleware import apply_middleware
+from core.retry import db_bulkhead, mongo_circuit, with_retry
+from core.scanner import QuantumScanner
+from core.scheduler import scheduler
+from core.vault import QuantumVault
+from models.pulse_models import PulseBlob, ScanMode
 
 # ─────────────────────────────── config + rate limiter ───────────────────── #
 
@@ -79,8 +89,8 @@ async def _load_blob(pulse_id: str) -> tuple[bytes, PulseBlob]:
             blob, meta = await mongo_circuit.call(state.db.load_pulse, pulse_id)
             db_operations_total.labels(operation="load", backend="mongo" if state.db.is_mongo else "memory").inc()
             return blob, meta
-        except KeyError:
-            raise HTTPException(404, f"Pulse {pulse_id!r} not found")
+        except KeyError as err:
+            raise HTTPException(404, f"Pulse {pulse_id!r} not found") from err
 
 
 def _identity(request: Request) -> str:
@@ -169,7 +179,7 @@ app.include_router(create_interface_router(_load_blob))
 
 class SealRequest(BaseModel):
     payload:   Any            = Field(...)
-    parent_id: Optional[str]  = None
+    parent_id: str | None  = None
     tags:      dict[str, str] = Field(default_factory=dict)
 
 class UnsealRequest(BaseModel):
@@ -179,7 +189,7 @@ class BootstrapRequest(BaseModel):
     samples: list[str] = Field(..., min_length=1)
 
 class MasterBuildRequest(BaseModel):
-    master_id: Optional[str] = None
+    master_id: str | None = None
     pulse_ids: list[str]     = Field(..., min_length=1)
 
 class ScanRequest(BaseModel):
@@ -224,7 +234,7 @@ async def seal(request: Request, req: SealRequest, p: Principal = Depends(requir
             blob, meta = await state.engine.seal(req.payload, pulse_id=pulse_id, parent_id=req.parent_id, tags=req.tags)
     except Exception as exc:
         await audit_logger.seal(pulse_id=pulse_id, identity=_identity(request), request_id=_req_id(request), ip=_ip(request), error=str(exc))
-        raise HTTPException(500, str(exc))
+        raise HTTPException(500, str(exc)) from exc
 
     async with db_bulkhead:
         backend = await mongo_circuit.call(state.db.save_pulse, pulse_id, blob, meta)
@@ -249,7 +259,7 @@ async def seal_file(request: Request, file: UploadFile = File(...), p: Principal
         with track_seal(dict_trained=state.engine._trainer.is_trained):
             blob, meta = await state.engine.seal(payload, pulse_id=pulse_id, tags={"filename": file.filename or ""})
     except Exception as exc:
-        raise HTTPException(500, str(exc))
+        raise HTTPException(500, str(exc)) from exc
     async with db_bulkhead:
         backend = await state.db.save_pulse(pulse_id, blob, meta)
     compression_ratio.observe(meta.stats.ratio)
@@ -268,7 +278,7 @@ async def unseal(request: Request, req: UnsealRequest, p: Principal = Depends(re
     except Exception as exc:
         await audit_logger.unseal(pulse_id=req.pulse_id, identity=_identity(request), request_id=_req_id(request),
                                    ip=_ip(request), error=str(exc))
-        raise HTTPException(500, f"Decryption failed: {exc}")
+        raise HTTPException(500, f"Decryption failed: {exc}") from exc
     await audit_logger.unseal(pulse_id=req.pulse_id, identity=_identity(request), request_id=_req_id(request), ip=_ip(request))
     return JSONResponse({"pulse_id": req.pulse_id, "payload": payload})
 
@@ -290,7 +300,7 @@ async def stream_pulse(pulse_id: str, request: Request,
 
 
 @app.get("/pulse/list", tags=["vault"])
-async def list_pulses(parent_id: Optional[str] = None, limit: int = Query(50, ge=1, le=1000),
+async def list_pulses(parent_id: str | None = None, limit: int = Query(50, ge=1, le=1000),
                       skip: int = Query(0, ge=0), p: Principal = Depends(require_scope("read"))) -> list[dict]:
     return await state.db.list_pulses(parent_id=parent_id, limit=limit, skip=skip)
 
@@ -309,7 +319,7 @@ async def bootstrap_dict(req: BootstrapRequest, p: Principal = Depends(require_s
         await state.engine.bootstrap_dict([s.encode() for s in req.samples])
     except Exception as exc:
         # Zstd dict training can fail if corpus is too small
-        raise HTTPException(400, f"Dict training failed: {exc}")
+        raise HTTPException(400, f"Dict training failed: {exc}") from exc
     return {"status": "trained", "dict_id": state.engine._trainer.dict_id}
 
 
@@ -328,8 +338,8 @@ async def build_master(req: MasterBuildRequest, p: Principal = Depends(require_s
 async def get_master(master_id: str, p: Principal = Depends(require_scope("read"))) -> dict:
     try:
         return (await state.db.load_master(master_id)).model_dump()
-    except KeyError:
-        raise HTTPException(404, f"MasterPulse {master_id!r} not found")
+    except KeyError as err:
+        raise HTTPException(404, f"MasterPulse {master_id!r} not found") from err
 
 
 @app.post("/pulse/rotate/{pulse_id}", tags=["vault"])
@@ -341,7 +351,7 @@ async def rotate_shard(pulse_id: str, req: RotateRequest, request: Request,
         new_blob, new_meta = await state.vault.rotate_shard(blob, meta, req.old_passphrase, new_vk)
     except Exception as exc:
         await audit_logger.rotate(pulse_id=pulse_id, identity=_identity(request), error=str(exc))
-        raise HTTPException(500, str(exc))
+        raise HTTPException(500, str(exc)) from exc
     async with db_bulkhead:
         await state.db.update_pulse(pulse_id, new_blob, new_meta)
     key_rotations_total.inc()
@@ -446,7 +456,7 @@ async def scan_and_seal(req: ScanRequest, p: Principal = Depends(require_scope("
 
 
 @app.get("/audit/recent", tags=["ops"])
-async def recent_audit(limit: int = Query(50, ge=1, le=500), event_type: Optional[str] = None,
+async def recent_audit(limit: int = Query(50, ge=1, le=500), event_type: str | None = None,
                        p: Principal = Depends(require_scope("admin"))) -> list[dict]:
     return await audit_logger.query_recent(limit=limit, event_type=event_type)
 

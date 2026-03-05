@@ -26,19 +26,15 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import sys
 import uuid
 from pathlib import Path
-from typing import Optional
 
 import typer
-from rich import print as rprint
 from rich.console import Console
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
-from rich.text import Text
 
 app     = typer.Typer(
     name            = "qp",
@@ -59,8 +55,8 @@ def _get_engine(passphrase: str):
 
 def _get_db(passphrase: str):
     sys.path.insert(0, str(Path(__file__).parent))
-    from core.db import PulseDB
     from core.config import get_settings
+    from core.db import PulseDB
     cfg = get_settings()
     return PulseDB(cfg.mongo_uri, cfg.mongo_db)
 
@@ -106,8 +102,8 @@ def config() -> None:
 def seal(
     file_path:  str = typer.Argument(..., help="File to seal"),
     passphrase: str = typer.Option("", "--passphrase", "-p"),
-    tag:        Optional[list[str]] = typer.Option(None, "--tag", "-t", help="key=value tags"),
-    output:     Optional[str] = typer.Option(None, "--output", "-o", help="Write pulse ID to file"),
+    tag:        list[str] | None = typer.Option(None, "--tag", "-t", help="key=value tags"),
+    output:     str | None = typer.Option(None, "--output", "-o", help="Write pulse ID to file"),
 ) -> None:
     """Seal a file into the vault (in-process, no server required)."""
     if not passphrase:
@@ -156,7 +152,7 @@ def seal(
 def unseal(
     pulse_id:   str = typer.Argument(..., help="Pulse ID to decrypt"),
     passphrase: str = typer.Option("", "--passphrase", "-p"),
-    output:     Optional[str] = typer.Option(None, "--output", "-o", help="Output file path"),
+    output:     str | None = typer.Option(None, "--output", "-o", help="Output file path"),
 ) -> None:
     """Decrypt a pulse from the vault."""
     if not passphrase:
@@ -168,7 +164,7 @@ def unseal(
         await db.connect()
 
         with Progress(SpinnerColumn(), TextColumn("{task.description}"), console=console) as prog:
-            t = prog.add_task("Decrypting …", total=None)
+            prog.add_task("Decrypting …", total=None)
             blob, meta = await db.load_pulse(pulse_id)
             payload    = await engine.unseal(blob, meta)
 
@@ -187,11 +183,10 @@ def unseal(
 @app.command(name="list")
 def list_pulses(
     limit:  int = typer.Option(20, "--limit", "-n"),
-    parent: Optional[str] = typer.Option(None, "--parent", "-p"),
+    parent: str | None = typer.Option(None, "--parent", "-p"),
 ) -> None:
     """List stored pulses."""
     async def _run():
-        from core.config import get_settings
         db = _get_db("")
         await db.connect()
         pulses = await db.list_pulses(parent_id=parent, limit=limit)
@@ -279,7 +274,6 @@ def scan(
 
     async def _run():
         from core.scanner import QuantumScanner
-        from core.engine  import QuantumEngine
 
         engine    = _get_engine(passphrase)
         db        = _get_db(passphrase)
@@ -340,8 +334,8 @@ def benchmark(
 
     async def _run():
         import json as _json
+
         from core.engine import QuantumEngine
-        from core.compression import PulseCompressor
 
         engine = QuantumEngine(passphrase=passphrase)
         samples = [
@@ -358,7 +352,7 @@ def benchmark(
         table.add_column("ms",         justify="right")
 
         for i in range(shards):
-            payload  = {"shard": i, "rows": [{"text": f"x"*100, "id": j} for j in range(rows)]}
+            payload  = {"shard": i, "rows": [{"text": "x"*100, "id": j} for j in range(rows)]}
             pid      = str(uuid.uuid4())
             blob, meta = await engine.seal(payload, pulse_id=pid)
             table.add_row(
@@ -407,7 +401,7 @@ def health(
         console.print(table)
     except Exception as exc:
         console.print(f"[red]Health check failed: {exc}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from exc
 
 
 # ─────────────────────────────── audit ───────────────────────────────────── #
@@ -415,7 +409,7 @@ def health(
 @app.command()
 def audit(
     limit:  int           = typer.Option(20, "--limit", "-n"),
-    event:  Optional[str] = typer.Option(None, "--event", "-e", help="Filter by event type"),
+    event:  str | None = typer.Option(None, "--event", "-e", help="Filter by event type"),
 ) -> None:
     """Print recent audit log entries."""
     async def _run():
