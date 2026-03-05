@@ -27,10 +27,10 @@ from __future__ import annotations
 
 import asyncio
 import io
-import os
 import time
 import uuid
-from typing import Any, AsyncIterator, Optional
+from collections.abc import AsyncIterator
+from typing import Any
 
 import msgpack
 from fastapi import APIRouter, HTTPException
@@ -40,7 +40,6 @@ from pydantic import BaseModel, Field
 
 from models.pulse_models import (
     MountedFile,
-    PulseBlob,
     VaultMount,
 )
 
@@ -146,10 +145,10 @@ class VirtualMount:
                 result.append(mfile)
         return result
 
-    def stat(self, virtual_path: str) -> Optional[MountedFile]:
+    def stat(self, virtual_path: str) -> MountedFile | None:
         return self._info.files.get(virtual_path)
 
-    def get_handle(self, virtual_path: str) -> Optional[InMemoryFileHandle]:
+    def get_handle(self, virtual_path: str) -> InMemoryFileHandle | None:
         handle = self._handles.get(virtual_path)
         if handle and handle.is_expired():
             del self._handles[virtual_path]
@@ -295,16 +294,16 @@ def create_interface_router(load_blob_fn) -> APIRouter:
     async def ls(mount_id: str, path: str = "/") -> list[dict]:
         try:
             mount = mount_manager.get_mount(mount_id)
-        except KeyError:
-            raise HTTPException(404, f"Mount {mount_id!r} not found")
+        except KeyError as err:
+            raise HTTPException(404, f"Mount {mount_id!r} not found") from err
         return [f.model_dump() for f in mount.list_dir(path)]
 
     @router.get("/{mount_id}/stat/{vpath:path}", summary="Stat a virtual file")
     async def stat_file(mount_id: str, vpath: str) -> dict:
         try:
             mount = mount_manager.get_mount(mount_id)
-        except KeyError:
-            raise HTTPException(404, f"Mount {mount_id!r} not found")
+        except KeyError as err:
+            raise HTTPException(404, f"Mount {mount_id!r} not found") from err
         mfile = mount.stat("/" + vpath.lstrip("/"))
         if mfile is None:
             raise HTTPException(404, f"Path /{vpath} not found")
@@ -321,10 +320,10 @@ def create_interface_router(load_blob_fn) -> APIRouter:
             handle = await mount_manager.open_file(
                 mount_id, virtual_path, load_blob_fn
             )
-        except KeyError:
-            raise HTTPException(404, f"Mount {mount_id!r} not found")
+        except KeyError as err:
+            raise HTTPException(404, f"Mount {mount_id!r} not found") from err
         except FileNotFoundError as exc:
-            raise HTTPException(404, str(exc))
+            raise HTTPException(404, str(exc)) from exc
 
         mfile = mount_manager.get_mount(mount_id).stat(virtual_path)
         content_type = mfile.content_type if mfile else "application/octet-stream"
@@ -350,8 +349,8 @@ def create_interface_router(load_blob_fn) -> APIRouter:
     ) -> dict:
         try:
             mount = mount_manager.get_mount(mount_id)
-        except KeyError:
-            raise HTTPException(404, f"Mount {mount_id!r} not found")
+        except KeyError as err:
+            raise HTTPException(404, f"Mount {mount_id!r} not found") from err
         mount.register_file(virtual_path, pulse_id, size, content_type)
         return {"registered": virtual_path, "pulse_id": pulse_id}
 

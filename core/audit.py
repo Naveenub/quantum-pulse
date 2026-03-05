@@ -26,18 +26,17 @@ MongoDB level via a capped collection (optional) or application logic.
 from __future__ import annotations
 
 import json
-import os
 import time
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
-from enum import Enum
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from loguru import logger
 
 
-class AuditEvent(str, Enum):
+class AuditEvent(StrEnum):
     SEAL        = "seal"
     UNSEAL      = "unseal"
     STREAM      = "stream"
@@ -57,12 +56,12 @@ class AuditEvent(str, Enum):
 class AuditRecord:
     event_type:  str
     outcome:     str                  # "success" | "failure"
-    timestamp:   str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-    pulse_id:    Optional[str]  = None
+    timestamp:   str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    pulse_id:    str | None  = None
     identity:    str            = "anon"
     request_id:  str            = ""
     ip_address:  str            = ""
-    error:       Optional[str]  = None
+    error:       str | None  = None
     meta:        dict[str, Any] = field(default_factory=dict)
 
     def to_json(self) -> str:
@@ -125,7 +124,7 @@ class AuditLogger:
         ip:         str = "",
         ratio:      float = 0.0,
         size_bytes: int   = 0,
-        error:      Optional[str] = None,
+        error:      str | None = None,
     ) -> None:
         await self.emit(AuditRecord(
             event_type = AuditEvent.SEAL,
@@ -145,7 +144,7 @@ class AuditLogger:
         identity:   str = "anon",
         request_id: str = "",
         ip:         str = "",
-        error:      Optional[str] = None,
+        error:      str | None = None,
     ) -> None:
         await self.emit(AuditRecord(
             event_type = AuditEvent.UNSEAL,
@@ -179,7 +178,7 @@ class AuditLogger:
         pulse_id:   str,
         identity:   str = "anon",
         request_id: str = "",
-        error:      Optional[str] = None,
+        error:      str | None = None,
     ) -> None:
         await self.emit(AuditRecord(
             event_type = AuditEvent.ROTATE,
@@ -230,8 +229,8 @@ class AuditLogger:
     async def query_recent(
         self,
         limit:      int = 100,
-        event_type: Optional[str] = None,
-        identity:   Optional[str] = None,
+        event_type: str | None = None,
+        identity:   str | None = None,
     ) -> list[dict]:
         """Read most recent records from MongoDB (if available) else file tail."""
         if self._db is not None and self._db.is_mongo:
@@ -248,7 +247,7 @@ class AuditLogger:
         # Fallback: read last N lines from file
         try:
             lines = self._log_file.read_text(encoding="utf-8").splitlines()
-            records = [json.loads(l) for l in lines[-limit:] if l]
+            records = [json.loads(line) for line in lines[-limit:] if line]
             if event_type:
                 records = [r for r in records if r.get("event_type") == event_type]
             if identity:

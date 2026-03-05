@@ -22,11 +22,10 @@ import asyncio
 import hashlib
 import os
 import time
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from queue import Empty, Queue
 from threading import Thread
-from typing import AsyncIterator, Callable, Optional
 
 import aiofiles
 import msgpack
@@ -87,9 +86,8 @@ def _scandir_producer(
                     queue.put((entry, depth), block=True)
                     pushed += 1
 
-                    if entry.is_dir(follow_symlinks=False):
-                        if mode == ScanMode.RECURSIVE:
-                            stack.append((entry.path, depth + 1))
+                    if entry.is_dir(follow_symlinks=False) and mode == ScanMode.RECURSIVE:
+                        stack.append((entry.path, depth + 1))
         except PermissionError:
             logger.warning("Permission denied: {}", current_path)
         except OSError as exc:
@@ -138,7 +136,7 @@ class QuantumScanner:
         hash_contents: bool     = True,     # SHA3-256 per file (slower but enables dedup)
         shard_on_entropy: bool  = True,
         n_workers:     int      = SCAN_WORKERS,
-        on_shard:      Optional[Callable[[DirManifest], None]] = None,
+        on_shard:      Callable[[DirManifest], None] | None = None,
     ) -> None:
         self.root             = os.path.abspath(root)
         self.mode             = mode
@@ -160,7 +158,7 @@ class QuantumScanner:
         t0            = time.perf_counter()
         raw_queue: Queue = Queue(maxsize=SCAN_QUEUE_SIZE)
         loop          = asyncio.get_running_loop()
-        results_queue: asyncio.Queue[Optional[FileEntry]] = asyncio.Queue()
+        asyncio.Queue()
 
         # ── start producer in background thread ──────────────────────────── #
         producer = Thread(

@@ -16,7 +16,7 @@ Features
 from __future__ import annotations
 
 import time
-from typing import Any, Optional
+from typing import Any
 
 from loguru import logger
 
@@ -26,6 +26,8 @@ try:
     MOTOR_AVAILABLE = True
 except ImportError:
     MOTOR_AVAILABLE = False
+
+import contextlib
 
 from models.pulse_models import MasterPulse, PulseBlob
 
@@ -73,7 +75,7 @@ class _MemoryStore:
             raise KeyError(f"MasterPulse {master_id!r} not found")
         return MasterPulse(**self._masters[master_id])
 
-    async def list_pulses(self, parent_id: Optional[str] = None) -> list[dict]:
+    async def list_pulses(self, parent_id: str | None = None) -> list[dict]:
         result = list(self._metas.values())
         if parent_id:
             result = [m for m in result if m.get("parent_id") == parent_id]
@@ -214,10 +216,8 @@ class PulseDB:
         # Delete old GridFS file if present
         old_doc = await self._db[COLLECTION_META].find_one({"pulse_id": pulse_id})
         if old_doc and "gridfs_file_id" in old_doc:
-            try:
+            with contextlib.suppress(Exception):
                 await self._gfs.delete(ObjectId(old_doc["gridfs_file_id"]))
-            except Exception:
-                pass
 
         await self.save_pulse(pulse_id, blob, meta)
         logger.debug("Atomic update  pulse={}…", pulse_id[:8])
@@ -228,16 +228,14 @@ class PulseDB:
 
         doc = await self._db[COLLECTION_META].find_one({"pulse_id": pulse_id})
         if doc and "gridfs_file_id" in doc:
-            try:
+            with contextlib.suppress(Exception):
                 await self._gfs.delete(ObjectId(doc["gridfs_file_id"]))
-            except Exception:
-                pass
         result = await self._db[COLLECTION_META].delete_one({"pulse_id": pulse_id})
         return result.deleted_count > 0
 
     async def list_pulses(
         self,
-        parent_id: Optional[str] = None,
+        parent_id: str | None = None,
         limit:     int = 100,
         skip:      int = 0,
     ) -> list[dict]:

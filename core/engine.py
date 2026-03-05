@@ -26,9 +26,10 @@ import math
 import os
 import struct
 import time
+from collections.abc import AsyncIterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
-from typing import Any, AsyncIterator, Final, Optional, Sequence
+from typing import Any, Final
 
 import msgpack
 import zstandard as zstd
@@ -36,13 +37,11 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from loguru import logger
-from pydantic import BaseModel
 
 from models.pulse_models import (
     CompressionStats,
     MasterPulse,
     PulseBlob,
-    PulseStatus,
 )
 
 # Adaptive dict manager — imported lazily to avoid circular dependency
@@ -167,7 +166,7 @@ class VaultKey:
 
     __slots__ = ("_key", "_salt")
 
-    def __init__(self, passphrase: str, salt: Optional[bytes] = None) -> None:
+    def __init__(self, passphrase: str, salt: bytes | None = None) -> None:
         self._salt: bytes = salt if salt is not None else os.urandom(KDF_SALT_BYTES)
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
@@ -189,8 +188,8 @@ class VaultKey:
 
     @classmethod
     async def derive_async(
-        cls, passphrase: str, salt: Optional[bytes] = None
-    ) -> "VaultKey":
+        cls, passphrase: str, salt: bytes | None = None
+    ) -> VaultKey:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(_CPU_POOL, cls, passphrase, salt)
 
@@ -206,7 +205,7 @@ class ZstdDictTrainer:
 
     def __init__(self, dict_size: int = 112 * 1024) -> None:
         self._dict_size = dict_size
-        self._cdict: Optional[zstd.ZstdCompressionDict] = None
+        self._cdict: zstd.ZstdCompressionDict | None = None
 
     def train(self, samples: list[bytes]) -> None:
         logger.info("Training Zstd dict on {} samples …", len(samples))
@@ -222,7 +221,7 @@ class ZstdDictTrainer:
         await loop.run_in_executor(_CPU_POOL, self.train, samples)
 
     @property
-    def dict_id(self) -> Optional[int]:
+    def dict_id(self) -> int | None:
         return self._cdict.dict_id() if self._cdict else None
 
     @property
@@ -263,7 +262,7 @@ class QuantumEngine:
         self,
         passphrase: str,
         *,
-        dict_trainer: Optional[ZstdDictTrainer] = None,
+        dict_trainer: ZstdDictTrainer | None = None,
         adaptive_dict = None,   # Optional[AdaptiveDictManager]
         aad: bytes = b"QUANTUM-PULSE-v1",
     ) -> None:
@@ -283,8 +282,8 @@ class QuantumEngine:
         payload: Any,
         *,
         pulse_id: str,
-        parent_id: Optional[str] = None,
-        tags: Optional[dict[str, str]] = None,
+        parent_id: str | None = None,
+        tags: dict[str, str] | None = None,
     ) -> tuple[bytes, PulseBlob]:
         """Serialise → compress → encrypt.  Returns (wire_blob, PulseBlob)."""
         t0   = time.perf_counter()

@@ -17,19 +17,16 @@ from __future__ import annotations
 
 import asyncio
 import os
-import platform
-import sys
 import time
-from dataclasses import dataclass, field, asdict
-from enum import Enum
-from typing import Any, Callable, Coroutine, Optional
+from collections.abc import Callable, Coroutine
+from dataclasses import asdict, dataclass, field
+from enum import StrEnum
+from typing import Any
 
 from fastapi import APIRouter, Response, status
-from fastapi.responses import JSONResponse
-from loguru import logger
 
 
-class CheckStatus(str, Enum):
+class CheckStatus(StrEnum):
     PASS = "PASS"
     WARN = "WARN"
     FAIL = "FAIL"
@@ -83,7 +80,7 @@ async def _run_check(
         result = await asyncio.wait_for(fn(), timeout=timeout)
         result.latency_ms = (time.perf_counter() - t0) * 1_000
         return result
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return CheckResult(
             name       = name,
             status     = CheckStatus.FAIL,
@@ -164,7 +161,7 @@ async def _check_memory() -> CheckResult:
     """Basic memory pressure check via /proc/meminfo."""
     try:
         with open("/proc/meminfo") as f:
-            lines = {l.split(":")[0]: l.split(":")[1].strip() for l in f}
+            lines = {ln.split(":")[0]: ln.split(":")[1].strip() for ln in f}
         total_kb     = int(lines["MemTotal"].split()[0])
         available_kb = int(lines["MemAvailable"].split()[0])
         used_pct     = (1 - available_kb / total_kb) * 100

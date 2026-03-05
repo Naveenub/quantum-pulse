@@ -13,9 +13,7 @@ Jobs
 
 from __future__ import annotations
 
-import asyncio
-import time
-from typing import Any, Callable, Optional
+from collections.abc import Callable
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -82,7 +80,7 @@ class QuantumScheduler:
     def register_ttl_cleanup(
         self,
         db_fn:    Callable,
-        ttl_days: Optional[int],
+        ttl_days: int | None,
         interval_s: int = 3600,
     ) -> None:
         if ttl_days is None:
@@ -139,7 +137,7 @@ class QuantumScheduler:
         """
         async def _job():
             engine = engine_fn()
-            db     = db_fn()
+            db_fn()
             try:
                 if engine._adaptive is None:
                     logger.debug("Adaptive dict not wired — skipping scheduled retrain")

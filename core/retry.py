@@ -12,22 +12,21 @@ Resilience patterns for database and external service calls.
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
-from enum import Enum
+from collections.abc import Callable
+from enum import StrEnum
 from functools import wraps
-from typing import Any, Callable, Optional, TypeVar
+from typing import Any, TypeVar
 
 from loguru import logger
 from tenacity import (
     AsyncRetrying,
-    RetryError,
+    before_sleep_log,
     retry_if_exception_type,
     stop_after_attempt,
     wait_exponential_jitter,
-    before_sleep_log,
-    after_log,
 )
-import logging
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -44,9 +43,9 @@ DEFAULT_TIMEOUT_S = 30.0
 
 try:
     from pymongo.errors import (
+        AutoReconnect,
         ConnectionFailure,
         NetworkTimeout,
-        AutoReconnect,
         ServerSelectionTimeoutError,
     )
     _MONGO_ERRORS = (ConnectionFailure, NetworkTimeout, AutoReconnect, ServerSelectionTimeoutError)
@@ -95,7 +94,7 @@ def with_retry(
 
 # ─────────────────────────────── circuit breaker ──────────────────────────── #
 
-class CircuitState(str, Enum):
+class CircuitState(StrEnum):
     CLOSED    = "closed"      # Normal — requests pass through
     OPEN      = "open"        # Failing — requests immediately rejected
     HALF_OPEN = "half_open"   # Probe — one request let through to test
@@ -123,14 +122,13 @@ class CircuitBreaker:
         self._recovery_timeout  = recovery_timeout
         self._failures          = 0
         self._state             = CircuitState.CLOSED
-        self._opened_at:  Optional[float] = None
+        self._opened_at:  float | None = None
 
     @property
     def state(self) -> CircuitState:
-        if self._state == CircuitState.OPEN:
-            if time.monotonic() - (self._opened_at or 0) >= self._recovery_timeout:
-                self._state = CircuitState.HALF_OPEN
-                logger.info("CircuitBreaker[{}] → HALF_OPEN", self.name)
+        if self._state == CircuitState.OPEN and time.monotonic() - (self._opened_at or 0) >= self._recovery_timeout:
+            self._state = CircuitState.HALF_OPEN
+            logger.info("CircuitBreaker[{}] → HALF_OPEN", self.name)
         return self._state
 
     def _on_success(self) -> None:
@@ -162,7 +160,7 @@ class CircuitBreaker:
             result = await fn(*args, **kwargs)
             self._on_success()
             return result
-        except Exception as exc:
+        except Exception:
             self._on_failure()
             raise
 
@@ -226,10 +224,10 @@ async def with_timeout(
     """Run *coro* with a timeout; raises TimeoutError with a descriptive message."""
     try:
         return await asyncio.wait_for(coro, timeout=timeout)
-    except asyncio.TimeoutError:
-        raise asyncio.TimeoutError(
+    except TimeoutError as err:
+        raise TimeoutError(
             f"{name} timed out after {timeout}s"
-        )
+        ) from err
 
 
 # ─────────────────────────────── global instances ─────────────────────────── #

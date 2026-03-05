@@ -14,22 +14,21 @@ from __future__ import annotations
 
 import os
 import secrets
-from enum import Enum
+from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class Environment(str, Enum):
+class Environment(StrEnum):
     DEVELOPMENT = "development"
     STAGING     = "staging"
     PRODUCTION  = "production"
 
 
-class LogLevel(str, Enum):
+class LogLevel(StrEnum):
     DEBUG   = "DEBUG"
     INFO    = "INFO"
     WARNING = "WARNING"
@@ -118,7 +117,7 @@ class Settings(BaseSettings):
     metrics_enabled: bool     = True
     metrics_path: str         = "/metrics"
     tracing_enabled: bool     = False
-    otlp_endpoint: Optional[str] = None
+    otlp_endpoint: str | None = None
 
     # ── Scheduler ─────────────────────────────────────────────────────────── #
     scheduler_enabled: bool   = True
@@ -126,7 +125,7 @@ class Settings(BaseSettings):
 
     # ── Storage ───────────────────────────────────────────────────────────── #
     gridfs_threshold_mb: int  = Field(default=16, ge=1, le=256)
-    pulse_ttl_days: Optional[int] = None   # None = never expire
+    pulse_ttl_days: int | None = None   # None = never expire
 
     # ── Audit ─────────────────────────────────────────────────────────────── #
     audit_enabled: bool       = True
@@ -170,7 +169,7 @@ class Settings(BaseSettings):
         return v
 
     @model_validator(mode="after")
-    def _production_hardening(self) -> "Settings":
+    def _production_hardening(self) -> Settings:
         if self.environment == Environment.PRODUCTION:
             if not self.api_key_enabled:
                 raise ValueError("API key auth must be enabled in production")

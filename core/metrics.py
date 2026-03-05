@@ -25,20 +25,18 @@ Collected metrics:
 from __future__ import annotations
 
 import time
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Generator
 
+from fastapi import APIRouter, Response
 from prometheus_client import (
-    CollectorRegistry,
+    CONTENT_TYPE_LATEST,
+    REGISTRY,
     Counter,
     Gauge,
     Histogram,
     generate_latest,
-    CONTENT_TYPE_LATEST,
-    REGISTRY,
 )
-from fastapi import Response
-from loguru import logger
 
 # ─────────────────────────────── label values ─────────────────────────────── #
 
@@ -195,8 +193,6 @@ def track_unseal() -> Generator[None, None, None]:
 
 
 # ─────────────────────────────── FastAPI endpoint ─────────────────────────── #
-
-from fastapi import APIRouter
 
 metrics_router = APIRouter(tags=["observability"])
 

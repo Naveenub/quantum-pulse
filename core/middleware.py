@@ -19,7 +19,8 @@ from __future__ import annotations
 import time
 import traceback
 import uuid
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.gzip import GZipMiddleware
@@ -27,10 +28,8 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
-from starlette.types import ASGIApp
 
 from core.config import get_settings
-
 
 # ─────────────────────────────── Request ID ──────────────────────────────── #
 
@@ -176,7 +175,7 @@ def install_exception_handlers(app: FastAPI) -> None:
     ) -> JSONResponse:
         req_id = getattr(request.state, "request_id", "")
         errors = [
-            {"field": ".".join(str(l) for l in e["loc"]), "message": e["msg"]}
+            {"field": ".".join(str(loc) for loc in e["loc"]), "message": e["msg"]}
             for e in exc.errors()
         ]
         logger.warning("Validation error  req={}  errors={}", req_id[:8], errors)

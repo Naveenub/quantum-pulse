@@ -26,13 +26,13 @@ import hashlib
 import hmac
 import time
 from dataclasses import dataclass
-from typing import Optional
 
-from fastapi import Depends, HTTPException, Request, Security, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Security, status
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from loguru import logger
 from passlib.context import CryptContext
+from pydantic import BaseModel
 
 from core.config import get_settings
 
@@ -85,7 +85,7 @@ def decode_token(token: str) -> dict:
 
 # ─────────────────────────────── API key validation ──────────────────────────#
 
-def _validate_api_key(key: str) -> Optional[Principal]:
+def _validate_api_key(key: str) -> Principal | None:
     """Constant-time comparison against all configured API keys."""
     cfg = get_settings()
     for valid_key in cfg.api_keys:
@@ -108,7 +108,7 @@ def _validate_api_key(key: str) -> Optional[Principal]:
 
 async def require_api_key(
     request:  Request,
-    api_key: Optional[str] = Security(_api_key_header),
+    api_key: str | None = Security(_api_key_header),
 ) -> Principal:
     """Dependency: block unless a valid API key is provided."""
     cfg = get_settings()
@@ -122,7 +122,7 @@ async def require_api_key(
         raise HTTPException(
             status_code = status.HTTP_401_UNAUTHORIZED,
             detail      = "API key required",
-            headers     = {"WWW-Authenticate": f'APIKey realm="quantum-pulse"'},
+            headers     = {"WWW-Authenticate": 'APIKey realm="quantum-pulse"'},
         )
 
     principal = _validate_api_key(api_key)
@@ -139,8 +139,8 @@ async def require_api_key(
 
 async def require_auth(
     request:  Request,
-    api_key: Optional[str]                       = Security(_api_key_header),
-    bearer:  Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
+    api_key: str | None                       = Security(_api_key_header),
+    bearer:  HTTPAuthorizationCredentials | None = Depends(_bearer),
 ) -> Principal:
     """Dependency: accept valid API key OR valid JWT bearer token."""
     cfg = get_settings()
@@ -180,9 +180,9 @@ async def require_auth(
 
 async def optional_auth(
     request:  Request,
-    api_key: Optional[str]                       = Security(_api_key_header),
-    bearer:  Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
-) -> Optional[Principal]:
+    api_key: str | None                       = Security(_api_key_header),
+    bearer:  HTTPAuthorizationCredentials | None = Depends(_bearer),
+) -> Principal | None:
     """Dependency: resolve identity if credentials present; never raises."""
     try:
         return await require_auth(request, api_key=api_key, bearer=bearer)
@@ -204,9 +204,6 @@ def require_scope(scope: str):
 
 
 # ─────────────────────────────── /auth/token endpoint ─────────────────────── #
-
-from fastapi import APIRouter
-from pydantic import BaseModel
 
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
 

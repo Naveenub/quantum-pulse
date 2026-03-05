@@ -13,21 +13,19 @@ from __future__ import annotations
 
 import asyncio
 import io
-import os
 import time
-from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
-from typing import AsyncIterator, Optional
+from collections.abc import AsyncIterator
+from dataclasses import dataclass
 
 import zstandard as zstd
 from loguru import logger
 
 from core.engine import (
+    _CPU_POOL,
     ZSTD_LEVEL,
     ZSTD_THREADS,
     ZSTD_WINDOW_LOG,
     ZstdDictTrainer,
-    _CPU_POOL,
     _sizeof_fmt,
 )
 
@@ -44,7 +42,7 @@ class CompressResult:
     compressed_bytes: int
     ratio:            float
     duration_ms:      float
-    dict_id:          Optional[int] = None
+    dict_id:          int | None = None
 
     @property
     def throughput_mb_s(self) -> float:
@@ -74,7 +72,7 @@ class PulseCompressor:
     is kept in memory for the lifetime of the process.
     """
 
-    def __init__(self, trainer: Optional[ZstdDictTrainer] = None) -> None:
+    def __init__(self, trainer: ZstdDictTrainer | None = None) -> None:
         self._trainer = trainer or ZstdDictTrainer()
 
     # ── dictionary lifecycle ───────────────────────────────────────────────── #
@@ -91,7 +89,7 @@ class PulseCompressor:
         await self.train_from_samples([t.encode(encoding) for t in texts])
 
     @property
-    def dict_id(self) -> Optional[int]:
+    def dict_id(self) -> int | None:
         return self._trainer.dict_id
 
     @property
@@ -139,7 +137,7 @@ class PulseCompressor:
         Yields compressed chunks as they are produced (lower peak memory).
         """
         loop = asyncio.get_running_loop()
-        cctx = self._trainer.compressor()
+        self._trainer.compressor()
         buf  = io.BytesIO()
 
         # Collect stream into buffer (zstd streaming requires synchronous writes)

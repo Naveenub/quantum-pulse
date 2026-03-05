@@ -21,21 +21,17 @@ import hmac
 import os
 import secrets
 import time
-from typing import Optional
 
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from loguru import logger
 
 from core.engine import (
+    _CPU_POOL,
     AES_KEY_BYTES,
     AES_NONCE_BYTES,
-    KDF_ITERATIONS,
     KDF_SALT_BYTES,
     VaultKey,
-    _CPU_POOL,
 )
 from models.pulse_models import PulseBlob
 
@@ -56,7 +52,7 @@ class _KeyCache:
         self._store: dict[str, tuple[bytes, float]] = {}
         self._ttl   = ttl
 
-    def get(self, cache_key: str) -> Optional[bytes]:
+    def get(self, cache_key: str) -> bytes | None:
         entry = self._store.get(cache_key)
         if entry is None:
             return None
@@ -111,13 +107,13 @@ class QuantumVault:
         cache_ttl: float = KEY_CACHE_TTL_SECONDS,
     ) -> None:
         self._passphrase = passphrase
-        self._master_vk: Optional[VaultKey] = None
+        self._master_vk: VaultKey | None = None
         self._cache      = _KeyCache(ttl=cache_ttl)
         logger.info("QuantumVault initialised  cache_ttl={}s", cache_ttl)
 
     # ── master key ─────────────────────────────────────────────────────────── #
 
-    async def unlock(self, salt: Optional[bytes] = None) -> VaultKey:
+    async def unlock(self, salt: bytes | None = None) -> VaultKey:
         """
         Derive (or re-derive) the master VaultKey.
         Caches the result; subsequent calls with the same salt return immediately.
@@ -180,7 +176,6 @@ class QuantumVault:
         if len(new_passphrase) < 16:
             raise ValueError("Passphrase must be at least 16 characters")
 
-        old_passphrase   = self._passphrase
         self._passphrase = new_passphrase
         self._master_vk  = None
         self._cache.clear()
@@ -208,9 +203,9 @@ class QuantumVault:
         """
         from core.engine import (
             HEADER_SIZE,
+            _cached_aesgcm,
             _pack_header,
             _unpack_header,
-            _cached_aesgcm,
         )
 
         loop = asyncio.get_running_loop()
@@ -241,7 +236,6 @@ class QuantumVault:
 
         new_blob = _pack_header(new_nonce) + new_ct
 
-        import hashlib
         from core.engine import build_merkle_tree
         new_chunk_hash   = hashlib.sha3_256(new_ct).hexdigest()
         _, new_merkle    = build_merkle_tree([new_ct])

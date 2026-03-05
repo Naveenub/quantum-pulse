@@ -35,15 +35,12 @@ from __future__ import annotations
 import asyncio
 import collections
 import time
-from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 import zstandard as zstd
 from loguru import logger
 
-from core.engine import ZSTD_LEVEL, ZSTD_THREADS, ZSTD_WINDOW_LOG, _CPU_POOL
-
+from core.engine import _CPU_POOL, ZSTD_LEVEL, ZSTD_THREADS, ZSTD_WINDOW_LOG
 
 # ─────────────────────────────── result types ─────────────────────────────── #
 
@@ -97,7 +94,7 @@ class AdaptiveDictManager:
 
         # Version history — index 0 is current (latest), -1 is oldest kept
         self._versions: list[DictVersion]   = []
-        self._current:  Optional[zstd.ZstdCompressionDict] = None
+        self._current:  zstd.ZstdCompressionDict | None = None
 
         # How many seals have happened since the last retrain
         self._seals_since_retrain: int = 0
@@ -110,7 +107,7 @@ class AdaptiveDictManager:
 
     # ── public API ────────────────────────────────────────────────────────── #
 
-    async def record_seal(self, msgpack_bytes: bytes) -> Optional[RetrainResult]:
+    async def record_seal(self, msgpack_bytes: bytes) -> RetrainResult | None:
         """
         Called after every seal with the raw MsgPack bytes (pre-compression).
 
@@ -183,7 +180,7 @@ class AdaptiveDictManager:
         return self._current is not None
 
     @property
-    def dict_id(self) -> Optional[int]:
+    def dict_id(self) -> int | None:
         return self._current.dict_id() if self._current else None
 
     @property
@@ -214,7 +211,7 @@ class AdaptiveDictManager:
             "latest_ratio":         self._versions[0].baseline_ratio if self._versions else None,
         }
 
-    async def force_retrain(self, extra_samples: Optional[list[bytes]] = None) -> Optional[RetrainResult]:
+    async def force_retrain(self, extra_samples: list[bytes] | None = None) -> RetrainResult | None:
         """
         Force an immediate retrain (e.g. called by /pulse/bootstrap endpoint).
         Optionally inject extra samples beyond the rolling buffer.
@@ -232,7 +229,7 @@ class AdaptiveDictManager:
             and self._seals_since_retrain >= self._retrain_every_n
         )
 
-    async def _retrain(self, force: bool = False) -> Optional[RetrainResult]:
+    async def _retrain(self, force: bool = False) -> RetrainResult | None:
         """
         Train a candidate dict on the current buffer.
         A/B test it against the previous dict.
@@ -324,7 +321,7 @@ class AdaptiveDictManager:
     @staticmethod
     def _ab_test(
         corpus:        list[bytes],
-        old_cdict:     Optional[zstd.ZstdCompressionDict],
+        old_cdict:     zstd.ZstdCompressionDict | None,
         candidate_raw: bytes,
     ) -> tuple[float, float]:
         """
@@ -355,7 +352,7 @@ class AdaptiveDictManager:
         new_ratio = total_orig / max(new_sizes, 1)
         return old_ratio, new_ratio
 
-    def _version_by_id(self, version: int) -> Optional[DictVersion]:
+    def _version_by_id(self, version: int) -> DictVersion | None:
         for dv in self._versions:
             if dv.version == version:
                 return dv
