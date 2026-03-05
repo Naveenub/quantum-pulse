@@ -7,28 +7,26 @@ Canonical Pydantic V2 models shared across the entire system.
 from __future__ import annotations
 
 import time
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-
 # ─────────────────────────────── enums ────────────────────────────────────── #
 
-class StorageBackend(str, Enum):
+class StorageBackend(StrEnum):
     MEMORY  = "memory"
     MONGO   = "mongo"
     GRIDFS  = "gridfs"
 
 
-class PulseStatus(str, Enum):
+class PulseStatus(StrEnum):
     PENDING   = "pending"
     SEALED    = "sealed"
     CORRUPTED = "corrupted"
     EXPIRED   = "expired"
 
 
-class ScanMode(str, Enum):
+class ScanMode(StrEnum):
     SHALLOW   = "shallow"    # one level only
     RECURSIVE = "recursive"  # full depth with entropy sharding
     SAMPLED   = "sampled"    # first 5 % for dict training
@@ -46,7 +44,7 @@ class CompressionStats(BaseModel):
     entropy_bits_per_byte: float = 0.0
 
     @model_validator(mode="after")
-    def _compute_ratio(self) -> "CompressionStats":
+    def _compute_ratio(self) -> CompressionStats:
         if self.original_bytes:
             self.ratio = self.original_bytes / max(self.encrypted_bytes, 1)
         return self
@@ -69,8 +67,8 @@ class FileEntry(BaseModel):
     size:         int
     mtime:        float
     is_dir:       bool   = False
-    content_hash: Optional[str] = None      # SHA3-256 hex, populated lazily
-    pulse_id:     Optional[str] = None      # set after sealing
+    content_hash: str | None = None      # SHA3-256 hex, populated lazily
+    pulse_id:     str | None = None      # set after sealing
 
 
 class DirManifest(BaseModel):
@@ -86,12 +84,12 @@ class DirManifest(BaseModel):
 
 class PulseBlob(BaseModel):
     pulse_id:     str
-    parent_id:    Optional[str]  = None
+    parent_id:    str | None  = None
     merkle_root:  str
     chunk_hash:   str
     salt:         str
     nonce:        str
-    zstd_dict_id: Optional[int] = None
+    zstd_dict_id: int | None = None
     dict_version: int             = 0    # adaptive dict version used at seal time
     stats:        CompressionStats
     status:       PulseStatus   = PulseStatus.SEALED
@@ -103,8 +101,8 @@ class PulseBlob(BaseModel):
     def _must_be_hex(cls, v: str) -> str:
         try:
             bytes.fromhex(v)
-        except ValueError:
-            raise ValueError(f"Expected hex string, got: {v!r}")
+        except ValueError as err:
+            raise ValueError(f"Expected hex string, got: {v!r}") from err
         return v.lower()
 
 
