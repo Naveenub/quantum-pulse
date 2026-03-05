@@ -40,13 +40,17 @@ from prometheus_client import (
 
 # ─────────────────────────────── label values ─────────────────────────────── #
 
-_LATENCY_BUCKETS = (
-    5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000
-)  # ms
+_LATENCY_BUCKETS = (5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000)  # ms
 
 _SIZE_BUCKETS = (
-    1_024, 4_096, 16_384, 65_536, 262_144,
-    1_048_576, 4_194_304, 16_777_216,
+    1_024,
+    4_096,
+    16_384,
+    65_536,
+    262_144,
+    1_048_576,
+    4_194_304,
+    16_777_216,
 )  # bytes
 
 _RATIO_BUCKETS = (1, 2, 5, 10, 20, 30, 50, 100, 200)
@@ -166,6 +170,7 @@ scan_duration_ms = Histogram(
 
 # ─────────────────────────────── context managers ─────────────────────────── #
 
+
 @contextmanager
 def track_seal(dict_trained: bool) -> Generator[None, None, None]:
     """Context manager that records seal success/failure and latency."""
@@ -201,7 +206,7 @@ metrics_router = APIRouter(tags=["observability"])
 async def prometheus_metrics() -> Response:
     """Prometheus metrics scrape endpoint."""
     return Response(
-        content      = generate_latest(REGISTRY),
-        media_type   = CONTENT_TYPE_LATEST,
-        status_code  = 200,
+        content=generate_latest(REGISTRY),
+        media_type=CONTENT_TYPE_LATEST,
+        status_code=200,
     )

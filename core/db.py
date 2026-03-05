@@ -23,6 +23,7 @@ from loguru import logger
 try:
     import motor.motor_asyncio as motor
     from bson import ObjectId
+
     MOTOR_AVAILABLE = True
 except ImportError:
     MOTOR_AVAILABLE = False
@@ -33,18 +34,19 @@ from models.pulse_models import MasterPulse, PulseBlob
 
 # ─────────────────────────────── constants ────────────────────────────────── #
 
-GRIDFS_THRESHOLD = 16 * 1024 * 1024   # 16 MiB
-COLLECTION_META   = "pulse_meta"
+GRIDFS_THRESHOLD = 16 * 1024 * 1024  # 16 MiB
+COLLECTION_META = "pulse_meta"
 COLLECTION_MASTER = "master_pulses"
 
 # ─────────────────────────────── MemoryStore (fallback) ───────────────────── #
+
 
 class _MemoryStore:
     """Drop-in fallback when MongoDB is unavailable (dev / CI mode)."""
 
     def __init__(self) -> None:
         self._blobs: dict[str, bytes] = {}
-        self._metas: dict[str, dict]  = {}
+        self._metas: dict[str, dict] = {}
         self._masters: dict[str, dict] = {}
 
     async def save_pulse(self, pulse_id: str, blob: bytes, meta: PulseBlob) -> str:
@@ -87,6 +89,7 @@ class _MemoryStore:
 
 # ─────────────────────────────── PulseDB ──────────────────────────────────── #
 
+
 class PulseDB:
     """
     Primary persistence interface.  Uses MongoDB+GridFS when available,
@@ -95,16 +98,16 @@ class PulseDB:
 
     def __init__(
         self,
-        mongo_uri:  str = "mongodb://localhost:27017",
-        db_name:    str = "quantum_pulse",
+        mongo_uri: str = "mongodb://localhost:27017",
+        db_name: str = "quantum_pulse",
     ) -> None:
-        self._uri     = mongo_uri
+        self._uri = mongo_uri
         self._db_name = db_name
         self._client: Any = None
-        self._db:     Any = None
-        self._gfs:    Any = None
-        self._mem     = _MemoryStore()
-        self._ready   = False
+        self._db: Any = None
+        self._gfs: Any = None
+        self._mem = _MemoryStore()
+        self._ready = False
 
     # ── lifecycle ─────────────────────────────────────────────────────────── #
 
@@ -121,7 +124,7 @@ class PulseDB:
                 connectTimeoutMS=3_000,
             )
             await self._client.admin.command("ping")
-            self._db  = self._client[self._db_name]
+            self._db = self._client[self._db_name]
             self._gfs = motor.AsyncIOMotorGridFSBucket(self._db)
             await self._ensure_indexes()
             self._ready = True
@@ -130,7 +133,7 @@ class PulseDB:
         except Exception as exc:
             logger.warning("MongoDB unavailable ({}); falling back to MemoryStore", exc)
             self._client = None
-            self._ready  = True
+            self._ready = True
             return False
 
     async def disconnect(self) -> None:
@@ -147,7 +150,7 @@ class PulseDB:
 
     async def _ensure_indexes(self) -> None:
         col = self._db[COLLECTION_META]
-        await col.create_index("pulse_id",  unique=True)
+        await col.create_index("pulse_id", unique=True)
         await col.create_index("parent_id")
         await col.create_index("created_at")
         await col.create_index([("tags.source", 1)])
@@ -155,9 +158,7 @@ class PulseDB:
 
     # ── pulse CRUD ────────────────────────────────────────────────────────── #
 
-    async def save_pulse(
-        self, pulse_id: str, blob: bytes, meta: PulseBlob
-    ) -> str:
+    async def save_pulse(self, pulse_id: str, blob: bytes, meta: PulseBlob) -> str:
         """Store blob + metadata.  Returns storage backend string."""
         if not self.is_mongo:
             return await self._mem.save_pulse(pulse_id, blob, meta)
@@ -167,8 +168,7 @@ class PulseDB:
         if len(blob) > GRIDFS_THRESHOLD:
             # GridFS path — store binary separately
             file_id = await self._gfs.upload_from_stream(
-                pulse_id, blob,
-                metadata={"pulse_id": pulse_id, "created_at": time.time()}
+                pulse_id, blob, metadata={"pulse_id": pulse_id, "created_at": time.time()}
             )
             doc["gridfs_file_id"] = str(file_id)
             backend = "gridfs"
@@ -176,9 +176,7 @@ class PulseDB:
             doc["blob"] = blob
             backend = "mongo"
 
-        await self._db[COLLECTION_META].replace_one(
-            {"pulse_id": pulse_id}, doc, upsert=True
-        )
+        await self._db[COLLECTION_META].replace_one({"pulse_id": pulse_id}, doc, upsert=True)
         logger.debug("Saved pulse  id={}  backend={}", pulse_id[:8], backend)
         return backend
 
@@ -186,25 +184,19 @@ class PulseDB:
         if not self.is_mongo:
             return await self._mem.load_pulse(pulse_id)
 
-        doc = await self._db[COLLECTION_META].find_one(
-            {"pulse_id": pulse_id}, {"_id": 0}
-        )
+        doc = await self._db[COLLECTION_META].find_one({"pulse_id": pulse_id}, {"_id": 0})
         if doc is None:
             raise KeyError(f"Pulse {pulse_id!r} not found")
 
         if "gridfs_file_id" in doc:
-            stream = await self._gfs.open_download_stream(
-                ObjectId(doc.pop("gridfs_file_id"))
-            )
+            stream = await self._gfs.open_download_stream(ObjectId(doc.pop("gridfs_file_id")))
             blob = await stream.read()
         else:
             blob = bytes(doc.pop("blob"))
 
         return blob, PulseBlob(**doc)
 
-    async def update_pulse(
-        self, pulse_id: str, blob: bytes, meta: PulseBlob
-    ) -> None:
+    async def update_pulse(self, pulse_id: str, blob: bytes, meta: PulseBlob) -> None:
         """
         Atomic shard replacement (used after key rotation).
         Only this shard's document is rewritten; MasterPulse is untouched
@@ -236,17 +228,23 @@ class PulseDB:
     async def list_pulses(
         self,
         parent_id: str | None = None,
-        limit:     int = 100,
-        skip:      int = 0,
+        limit: int = 100,
+        skip: int = 0,
     ) -> list[dict]:
         if not self.is_mongo:
             return await self._mem.list_pulses(parent_id)
 
-        query  = {"parent_id": parent_id} if parent_id else {}
-        cursor = self._db[COLLECTION_META].find(
-            query,
-            {"_id": 0, "blob": 0, "gridfs_file_id": 0},  # exclude binary fields
-        ).skip(skip).limit(limit).sort("created_at", -1)
+        query = {"parent_id": parent_id} if parent_id else {}
+        cursor = (
+            self._db[COLLECTION_META]
+            .find(
+                query,
+                {"_id": 0, "blob": 0, "gridfs_file_id": 0},  # exclude binary fields
+            )
+            .skip(skip)
+            .limit(limit)
+            .sort("created_at", -1)
+        )
         return await cursor.to_list(length=limit)
 
     async def count_pulses(self) -> int:
@@ -266,9 +264,7 @@ class PulseDB:
     async def load_master(self, master_id: str) -> MasterPulse:
         if not self.is_mongo:
             return await self._mem.load_master(master_id)
-        doc = await self._db[COLLECTION_MASTER].find_one(
-            {"master_id": master_id}, {"_id": 0}
-        )
+        doc = await self._db[COLLECTION_MASTER].find_one({"master_id": master_id}, {"_id": 0})
         if doc is None:
             raise KeyError(f"MasterPulse {master_id!r} not found")
         return MasterPulse(**doc)
@@ -276,7 +272,7 @@ class PulseDB:
     async def list_masters(self, limit: int = 50) -> list[dict]:
         if not self.is_mongo:
             return list(self._mem._masters.values())
-        cursor = self._db[COLLECTION_MASTER].find(
-            {}, {"_id": 0}
-        ).sort("created_at", -1).limit(limit)
+        cursor = (
+            self._db[COLLECTION_MASTER].find({}, {"_id": 0}).sort("created_at", -1).limit(limit)
+        )
         return await cursor.to_list(length=limit)

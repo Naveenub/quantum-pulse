@@ -37,15 +37,15 @@ from loguru import logger
 
 
 class AuditEvent(StrEnum):
-    SEAL        = "seal"
-    UNSEAL      = "unseal"
-    STREAM      = "stream"
-    ROTATE      = "rotate"
-    DELETE      = "delete"
-    BOOTSTRAP   = "bootstrap"
-    SCAN        = "scan"
-    MASTER      = "master"
-    AUTH_FAIL   = "auth_fail"
+    SEAL = "seal"
+    UNSEAL = "unseal"
+    STREAM = "stream"
+    ROTATE = "rotate"
+    DELETE = "delete"
+    BOOTSTRAP = "bootstrap"
+    SCAN = "scan"
+    MASTER = "master"
+    AUTH_FAIL = "auth_fail"
     KEY_DERIVED = "key_derived"
     MOUNT_CREATE = "mount_create"
     MOUNT_DESTROY = "mount_destroy"
@@ -54,15 +54,15 @@ class AuditEvent(StrEnum):
 
 @dataclass
 class AuditRecord:
-    event_type:  str
-    outcome:     str                  # "success" | "failure"
-    timestamp:   str = field(default_factory=lambda: datetime.now(UTC).isoformat())
-    pulse_id:    str | None  = None
-    identity:    str            = "anon"
-    request_id:  str            = ""
-    ip_address:  str            = ""
-    error:       str | None  = None
-    meta:        dict[str, Any] = field(default_factory=dict)
+    event_type: str
+    outcome: str  # "success" | "failure"
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    pulse_id: str | None = None
+    identity: str = "anon"
+    request_id: str = ""
+    ip_address: str = ""
+    error: str | None = None
+    meta: dict[str, Any] = field(default_factory=dict)
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), default=str)
@@ -78,8 +78,8 @@ class AuditLogger:
 
     def __init__(self, log_file: str = "logs/audit.jsonl") -> None:
         self._log_file = Path(log_file)
-        self._db: Any  = None
-        self._enabled  = True
+        self._db: Any = None
+        self._enabled = True
         self._log_file.parent.mkdir(parents=True, exist_ok=True)
         logger.info("AuditLogger initialised  file={}", log_file)
 
@@ -118,119 +118,131 @@ class AuditLogger:
     async def seal(
         self,
         *,
-        pulse_id:   str,
-        identity:   str = "anon",
+        pulse_id: str,
+        identity: str = "anon",
         request_id: str = "",
-        ip:         str = "",
-        ratio:      float = 0.0,
-        size_bytes: int   = 0,
-        error:      str | None = None,
+        ip: str = "",
+        ratio: float = 0.0,
+        size_bytes: int = 0,
+        error: str | None = None,
     ) -> None:
-        await self.emit(AuditRecord(
-            event_type = AuditEvent.SEAL,
-            outcome    = "failure" if error else "success",
-            pulse_id   = pulse_id,
-            identity   = identity,
-            request_id = request_id,
-            ip_address = ip,
-            error      = error,
-            meta       = {"ratio": ratio, "size_bytes": size_bytes},
-        ))
+        await self.emit(
+            AuditRecord(
+                event_type=AuditEvent.SEAL,
+                outcome="failure" if error else "success",
+                pulse_id=pulse_id,
+                identity=identity,
+                request_id=request_id,
+                ip_address=ip,
+                error=error,
+                meta={"ratio": ratio, "size_bytes": size_bytes},
+            )
+        )
 
     async def unseal(
         self,
         *,
-        pulse_id:   str,
-        identity:   str = "anon",
+        pulse_id: str,
+        identity: str = "anon",
         request_id: str = "",
-        ip:         str = "",
-        error:      str | None = None,
+        ip: str = "",
+        error: str | None = None,
     ) -> None:
-        await self.emit(AuditRecord(
-            event_type = AuditEvent.UNSEAL,
-            outcome    = "failure" if error else "success",
-            pulse_id   = pulse_id,
-            identity   = identity,
-            request_id = request_id,
-            ip_address = ip,
-            error      = error,
-        ))
+        await self.emit(
+            AuditRecord(
+                event_type=AuditEvent.UNSEAL,
+                outcome="failure" if error else "success",
+                pulse_id=pulse_id,
+                identity=identity,
+                request_id=request_id,
+                ip_address=ip,
+                error=error,
+            )
+        )
 
     async def auth_fail(
         self,
         *,
-        ip:         str = "",
+        ip: str = "",
         request_id: str = "",
-        reason:     str = "",
+        reason: str = "",
     ) -> None:
-        await self.emit(AuditRecord(
-            event_type = AuditEvent.AUTH_FAIL,
-            outcome    = "failure",
-            identity   = "anon",
-            request_id = request_id,
-            ip_address = ip,
-            error      = reason,
-        ))
+        await self.emit(
+            AuditRecord(
+                event_type=AuditEvent.AUTH_FAIL,
+                outcome="failure",
+                identity="anon",
+                request_id=request_id,
+                ip_address=ip,
+                error=reason,
+            )
+        )
 
     async def rotate(
         self,
         *,
-        pulse_id:   str,
-        identity:   str = "anon",
+        pulse_id: str,
+        identity: str = "anon",
         request_id: str = "",
-        error:      str | None = None,
+        error: str | None = None,
     ) -> None:
-        await self.emit(AuditRecord(
-            event_type = AuditEvent.ROTATE,
-            outcome    = "failure" if error else "success",
-            pulse_id   = pulse_id,
-            identity   = identity,
-            request_id = request_id,
-            error      = error,
-        ))
+        await self.emit(
+            AuditRecord(
+                event_type=AuditEvent.ROTATE,
+                outcome="failure" if error else "success",
+                pulse_id=pulse_id,
+                identity=identity,
+                request_id=request_id,
+                error=error,
+            )
+        )
 
     async def delete(
         self,
         *,
-        pulse_id:   str,
-        identity:   str = "anon",
+        pulse_id: str,
+        identity: str = "anon",
         request_id: str = "",
     ) -> None:
-        await self.emit(AuditRecord(
-            event_type = AuditEvent.DELETE,
-            outcome    = "success",
-            pulse_id   = pulse_id,
-            identity   = identity,
-            request_id = request_id,
-        ))
+        await self.emit(
+            AuditRecord(
+                event_type=AuditEvent.DELETE,
+                outcome="success",
+                pulse_id=pulse_id,
+                identity=identity,
+                request_id=request_id,
+            )
+        )
 
     async def file_access(
         self,
         *,
-        pulse_id:     str,
+        pulse_id: str,
         virtual_path: str,
-        identity:     str = "anon",
-        request_id:   str = "",
-        ip:           str = "",
-        cache_hit:    bool = False,
+        identity: str = "anon",
+        request_id: str = "",
+        ip: str = "",
+        cache_hit: bool = False,
     ) -> None:
-        await self.emit(AuditRecord(
-            event_type = AuditEvent.FILE_ACCESS,
-            outcome    = "success",
-            pulse_id   = pulse_id,
-            identity   = identity,
-            request_id = request_id,
-            ip_address = ip,
-            meta       = {"virtual_path": virtual_path, "cache_hit": cache_hit},
-        ))
+        await self.emit(
+            AuditRecord(
+                event_type=AuditEvent.FILE_ACCESS,
+                outcome="success",
+                pulse_id=pulse_id,
+                identity=identity,
+                request_id=request_id,
+                ip_address=ip,
+                meta={"virtual_path": virtual_path, "cache_hit": cache_hit},
+            )
+        )
 
     # ── query helpers ──────────────────────────────────────────────────────── #
 
     async def query_recent(
         self,
-        limit:      int = 100,
+        limit: int = 100,
         event_type: str | None = None,
-        identity:   str | None = None,
+        identity: str | None = None,
     ) -> list[dict]:
         """Read most recent records from MongoDB (if available) else file tail."""
         if self._db is not None and self._db.is_mongo:
@@ -239,9 +251,11 @@ class AuditLogger:
                 query["event_type"] = event_type
             if identity:
                 query["identity"] = identity
-            cursor = self._db._db.audit_log.find(
-                query, {"_id": 0, "_ttl_marker": 0}
-            ).sort("timestamp", -1).limit(limit)
+            cursor = (
+                self._db._db.audit_log.find(query, {"_id": 0, "_ttl_marker": 0})
+                .sort("timestamp", -1)
+                .limit(limit)
+            )
             return await cursor.to_list(length=limit)
 
         # Fallback: read last N lines from file

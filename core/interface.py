@@ -45,11 +45,12 @@ from models.pulse_models import (
 
 # ─────────────────────────────── constants ────────────────────────────────── #
 
-MAX_CACHED_HANDLES   = 256          # LRU cap for open file handles
-HANDLE_TTL_SECONDS   = 600          # Evict idle handles after 10 min
-STREAM_CHUNK_BYTES   = 64 * 1024    # 64 KiB per streamed chunk
+MAX_CACHED_HANDLES = 256  # LRU cap for open file handles
+HANDLE_TTL_SECONDS = 600  # Evict idle handles after 10 min
+STREAM_CHUNK_BYTES = 64 * 1024  # 64 KiB per streamed chunk
 
 # ─────────────────────────────── InMemoryFileHandle ──────────────────────── #
+
 
 class InMemoryFileHandle:
     """
@@ -58,21 +59,25 @@ class InMemoryFileHandle:
     """
 
     __slots__ = (
-        "_buf", "_path", "_pulse_id",
-        "_created_at", "_last_read_at", "_read_count",
+        "_buf",
+        "_path",
+        "_pulse_id",
+        "_created_at",
+        "_last_read_at",
+        "_read_count",
     )
 
     def __init__(self, path: str, pulse_id: str, data: bytes) -> None:
-        self._buf          = io.BytesIO(data)
-        self._path         = path
-        self._pulse_id     = pulse_id
-        self._created_at   = time.monotonic()
+        self._buf = io.BytesIO(data)
+        self._path = path
+        self._pulse_id = pulse_id
+        self._created_at = time.monotonic()
         self._last_read_at = self._created_at
-        self._read_count   = 0
+        self._read_count = 0
 
     def read(self, n: int = -1) -> bytes:
         self._last_read_at = time.monotonic()
-        self._read_count  += 1
+        self._read_count += 1
         return self._buf.read(n)
 
     def seek(self, offset: int, whence: int = 0) -> int:
@@ -100,10 +105,11 @@ class InMemoryFileHandle:
             if not chunk:
                 break
             yield chunk
-            await asyncio.sleep(0)   # yield control back to event loop
+            await asyncio.sleep(0)  # yield control back to event loop
 
 
 # ─────────────────────────────── VirtualMount ────────────────────────────── #
+
 
 class VirtualMount:
     """
@@ -112,7 +118,7 @@ class VirtualMount:
     """
 
     def __init__(self, mount_id: str, root_path: str = "/") -> None:
-        self._info    = VaultMount(mount_id=mount_id, root_path=root_path)
+        self._info = VaultMount(mount_id=mount_id, root_path=root_path)
         self._handles: dict[str, InMemoryFileHandle] = {}
 
     @property
@@ -125,14 +131,17 @@ class VirtualMount:
         return self._info
 
     def register_file(
-        self, virtual_path: str, pulse_id: str, size: int,
+        self,
+        virtual_path: str,
+        pulse_id: str,
+        size: int,
         content_type: str = "application/octet-stream",
     ) -> None:
         self._info.files[virtual_path] = MountedFile(
-            virtual_path = virtual_path,
-            pulse_id     = pulse_id,
-            size         = size,
-            content_type = content_type,
+            virtual_path=virtual_path,
+            pulse_id=pulse_id,
+            size=size,
+            content_type=content_type,
         )
         logger.debug("Registered virtual file  {}  pulse={}…", virtual_path, pulse_id[:8])
 
@@ -141,7 +150,7 @@ class VirtualMount:
         norm = dir_path.rstrip("/") + "/"
         result = []
         for vpath, mfile in self._info.files.items():
-            if vpath.startswith(norm) and "/" not in vpath[len(norm):]:
+            if vpath.startswith(norm) and "/" not in vpath[len(norm) :]:
                 result.append(mfile)
         return result
 
@@ -172,6 +181,7 @@ class VirtualMount:
 
 # ─────────────────────────────── MountManager ────────────────────────────── #
 
+
 class MountManager:
     """
     Top-level manager — creates, tracks, and tears down VirtualMounts.
@@ -180,7 +190,7 @@ class MountManager:
 
     def __init__(self) -> None:
         self._mounts: dict[str, VirtualMount] = {}
-        self._engine_ref: Any = None   # set by app startup
+        self._engine_ref: Any = None  # set by app startup
 
     def set_engine(self, engine: Any) -> None:
         self._engine_ref = engine
@@ -188,7 +198,7 @@ class MountManager:
 
     def create_mount(self, root_path: str = "/") -> VirtualMount:
         mount_id = str(uuid.uuid4())
-        mount    = VirtualMount(mount_id=mount_id, root_path=root_path)
+        mount = VirtualMount(mount_id=mount_id, root_path=root_path)
         self._mounts[mount_id] = mount
         logger.info("Mount created  id={}  root={}", mount_id[:8], root_path)
         return mount
@@ -214,7 +224,7 @@ class MountManager:
         self,
         mount_id: str,
         virtual_path: str,
-        load_blob_fn,   # async callable: (pulse_id) -> (bytes, PulseBlob)
+        load_blob_fn,  # async callable: (pulse_id) -> (bytes, PulseBlob)
     ) -> InMemoryFileHandle:
         """
         Open a virtual file for reading.
@@ -232,25 +242,26 @@ class MountManager:
 
         # Cache miss → decrypt from storage
         blob, meta = await load_blob_fn(mfile.pulse_id)
-        payload    = await self._engine_ref.unseal(blob, meta)
+        payload = await self._engine_ref.unseal(blob, meta)
 
         # Payload may be dict with 'data' key (file upload) or raw msgpack
         if isinstance(payload, dict) and "data" in payload:
-            raw = bytes(payload["data"]) if isinstance(payload["data"], (list, bytearray)) else payload["data"]
+            raw = (
+                bytes(payload["data"])
+                if isinstance(payload["data"], (list, bytearray))
+                else payload["data"]
+            )
         else:
             raw = msgpack.packb(payload, use_bin_type=True)
 
         handle = InMemoryFileHandle(
-            path      = virtual_path,
-            pulse_id  = mfile.pulse_id,
-            data      = raw,
+            path=virtual_path,
+            pulse_id=mfile.pulse_id,
+            data=raw,
         )
         mount.put_handle(virtual_path, handle)
         mfile.decrypted = True
-        logger.info(
-            "Decrypted into memory  {}  size={}",
-            virtual_path, handle.size
-        )
+        logger.info("Decrypted into memory  {}  size={}", virtual_path, handle.size)
         return handle
 
 
@@ -260,8 +271,8 @@ mount_manager = MountManager()
 
 
 class MountCreateRequest(BaseModel):
-    root_path:  str  = "/"
-    pulse_map:  dict[str, str] = Field(
+    root_path: str = "/"
+    pulse_map: dict[str, str] = Field(
         default_factory=dict,
         description="virtual_path → pulse_id mapping to register immediately",
     )
@@ -317,9 +328,7 @@ def create_interface_router(load_blob_fn) -> APIRouter:
         """
         virtual_path = "/" + vpath.lstrip("/")
         try:
-            handle = await mount_manager.open_file(
-                mount_id, virtual_path, load_blob_fn
-            )
+            handle = await mount_manager.open_file(mount_id, virtual_path, load_blob_fn)
         except KeyError as err:
             raise HTTPException(404, f"Mount {mount_id!r} not found") from err
         except FileNotFoundError as exc:
@@ -330,21 +339,21 @@ def create_interface_router(load_blob_fn) -> APIRouter:
 
         return StreamingResponse(
             handle.stream(),
-            media_type = content_type,
-            headers    = {
-                "Content-Length":       str(handle.size),
-                "X-Pulse-ID":           mfile.pulse_id if mfile else "",
-                "X-Virtual-Path":       virtual_path,
-                "X-QP-Decrypted-Size":  str(handle.size),
+            media_type=content_type,
+            headers={
+                "Content-Length": str(handle.size),
+                "X-Pulse-ID": mfile.pulse_id if mfile else "",
+                "X-Virtual-Path": virtual_path,
+                "X-QP-Decrypted-Size": str(handle.size),
             },
         )
 
     @router.post("/{mount_id}/register", summary="Register a new virtual file in an existing mount")
     async def register_file(
-        mount_id:    str,
+        mount_id: str,
         virtual_path: str,
-        pulse_id:    str,
-        size:        int = 0,
+        pulse_id: str,
+        size: int = 0,
         content_type: str = "application/octet-stream",
     ) -> dict:
         try:

@@ -44,29 +44,31 @@ from core.engine import _CPU_POOL, ZSTD_LEVEL, ZSTD_THREADS, ZSTD_WINDOW_LOG
 
 # ─────────────────────────────── result types ─────────────────────────────── #
 
+
 @dataclass
 class DictVersion:
-    version:      int
-    dict_id:      int
-    trained_at:   float          # Unix timestamp
-    sample_count: int            # how many samples it was trained on
-    baseline_ratio: float        # avg ratio on A/B test corpus when committed
-    raw_bytes:    bytes          # serialised dict (for DB persistence)
+    version: int
+    dict_id: int
+    trained_at: float  # Unix timestamp
+    sample_count: int  # how many samples it was trained on
+    baseline_ratio: float  # avg ratio on A/B test corpus when committed
+    raw_bytes: bytes  # serialised dict (for DB persistence)
 
 
 @dataclass
 class RetrainResult:
-    old_version:   int
-    new_version:   int
-    old_ratio:     float
-    new_ratio:     float
-    improvement:   float         # percentage points
-    committed:     bool
-    sample_count:  int
-    duration_ms:   float
+    old_version: int
+    new_version: int
+    old_ratio: float
+    new_ratio: float
+    improvement: float  # percentage points
+    committed: bool
+    sample_count: int
+    duration_ms: float
 
 
 # ─────────────────────────────── AdaptiveDictManager ──────────────────────── #
+
 
 class AdaptiveDictManager:
     """
@@ -77,24 +79,24 @@ class AdaptiveDictManager:
 
     def __init__(
         self,
-        retrain_every_n:  int   = 50,
-        min_improvement:  float = 1.0,   # percent
-        buffer_max:       int   = 500,
-        min_samples:      int   = 20,
-        dict_size_bytes:  int   = 112 * 1024,
+        retrain_every_n: int = 50,
+        min_improvement: float = 1.0,  # percent
+        buffer_max: int = 500,
+        min_samples: int = 20,
+        dict_size_bytes: int = 112 * 1024,
     ) -> None:
-        self._retrain_every_n  = retrain_every_n
-        self._min_improvement  = min_improvement
-        self._buffer_max       = buffer_max
-        self._min_samples      = min_samples
-        self._dict_size        = dict_size_bytes
+        self._retrain_every_n = retrain_every_n
+        self._min_improvement = min_improvement
+        self._buffer_max = buffer_max
+        self._min_samples = min_samples
+        self._dict_size = dict_size_bytes
 
         # Rolling ring-buffer of raw MsgPack samples
         self._buffer: collections.deque[bytes] = collections.deque(maxlen=buffer_max)
 
         # Version history — index 0 is current (latest), -1 is oldest kept
-        self._versions: list[DictVersion]   = []
-        self._current:  zstd.ZstdCompressionDict | None = None
+        self._versions: list[DictVersion] = []
+        self._current: zstd.ZstdCompressionDict | None = None
 
         # How many seals have happened since the last retrain
         self._seals_since_retrain: int = 0
@@ -128,21 +130,20 @@ class AdaptiveDictManager:
         Restore a previously persisted dict (e.g. from DB on server restart).
         """
         loop = asyncio.get_running_loop()
-        cdict = await loop.run_in_executor(
-            _CPU_POOL, lambda: zstd.ZstdCompressionDict(raw)
-        )
+        cdict = await loop.run_in_executor(_CPU_POOL, lambda: zstd.ZstdCompressionDict(raw))
         dv = DictVersion(
-            version      = version,
-            dict_id      = cdict.dict_id(),
-            trained_at   = time.time(),
-            sample_count = 0,
-            baseline_ratio = 0.0,
-            raw_bytes    = raw,
+            version=version,
+            dict_id=cdict.dict_id(),
+            trained_at=time.time(),
+            sample_count=0,
+            baseline_ratio=0.0,
+            raw_bytes=raw,
         )
         self._versions.insert(0, dv)
         self._current = cdict
-        logger.info("Loaded dict v{}  id={}  size={:.1f} KiB",
-                    version, cdict.dict_id(), len(raw) / 1024)
+        logger.info(
+            "Loaded dict v{}  id={}  size={:.1f} KiB", version, cdict.dict_id(), len(raw) / 1024
+        )
 
     def compressor(self) -> zstd.ZstdCompressor:
         """Return a ZstdCompressor using the current best dict (or vanilla if untrained)."""
@@ -197,18 +198,18 @@ class AdaptiveDictManager:
 
     def stats(self) -> dict:
         return {
-            "current_version":      self.current_version,
-            "dict_id":              self.dict_id,
-            "is_trained":           self.is_trained,
-            "total_seals":          self._total_seals,
-            "seals_since_retrain":  self._seals_since_retrain,
-            "seals_until_retrain":  self.seals_until_retrain,
-            "buffer_size":          self.buffer_size,
-            "buffer_max":           self._buffer_max,
-            "retrain_every_n":      self._retrain_every_n,
-            "min_improvement_pct":  self._min_improvement,
-            "versions_kept":        len(self._versions),
-            "latest_ratio":         self._versions[0].baseline_ratio if self._versions else None,
+            "current_version": self.current_version,
+            "dict_id": self.dict_id,
+            "is_trained": self.is_trained,
+            "total_seals": self._total_seals,
+            "seals_since_retrain": self._seals_since_retrain,
+            "seals_until_retrain": self.seals_until_retrain,
+            "buffer_size": self.buffer_size,
+            "buffer_max": self._buffer_max,
+            "retrain_every_n": self._retrain_every_n,
+            "min_improvement_pct": self._min_improvement,
+            "versions_kept": len(self._versions),
+            "latest_ratio": self._versions[0].baseline_ratio if self._versions else None,
         }
 
     async def force_retrain(self, extra_samples: list[bytes] | None = None) -> RetrainResult | None:
@@ -270,19 +271,19 @@ class AdaptiveDictManager:
             improvement = ((new_ratio - old_ratio) / max(old_ratio, 0.001)) * 100
             old_version = self.current_version
             new_version = old_version + 1
-            committed   = force or improvement >= self._min_improvement
+            committed = force or improvement >= self._min_improvement
 
             ms = (time.perf_counter() - t0) * 1000
 
             if committed:
                 cdict = zstd.ZstdCompressionDict(candidate_raw)
                 dv = DictVersion(
-                    version        = new_version,
-                    dict_id        = cdict.dict_id(),
-                    trained_at     = time.time(),
-                    sample_count   = len(samples),
-                    baseline_ratio = new_ratio,
-                    raw_bytes      = candidate_raw,
+                    version=new_version,
+                    dict_id=cdict.dict_id(),
+                    trained_at=time.time(),
+                    sample_count=len(samples),
+                    baseline_ratio=new_ratio,
+                    raw_bytes=candidate_raw,
                 )
                 self._versions.insert(0, dv)
                 self._current = cdict
@@ -293,35 +294,43 @@ class AdaptiveDictManager:
                 logger.success(
                     "Dict upgraded v{}→v{}  ratio {:.2f}×→{:.2f}×  +{:.1f}%  "
                     "{} samples  {:.0f} ms  id={}",
-                    old_version, new_version,
-                    old_ratio, new_ratio, improvement,
-                    len(samples), ms, cdict.dict_id(),
+                    old_version,
+                    new_version,
+                    old_ratio,
+                    new_ratio,
+                    improvement,
+                    len(samples),
+                    ms,
+                    cdict.dict_id(),
                 )
             else:
                 logger.info(
                     "Dict retrain: candidate not better  {:.2f}×→{:.2f}×  {:.1f}%  "
                     "(need +{:.1f}%)  keeping v{}",
-                    old_ratio, new_ratio, improvement,
-                    self._min_improvement, old_version,
+                    old_ratio,
+                    new_ratio,
+                    improvement,
+                    self._min_improvement,
+                    old_version,
                 )
 
             self._seals_since_retrain = 0
 
             return RetrainResult(
-                old_version  = old_version,
-                new_version  = new_version if committed else old_version,
-                old_ratio    = old_ratio,
-                new_ratio    = new_ratio,
-                improvement  = improvement,
-                committed    = committed,
-                sample_count = len(samples),
-                duration_ms  = ms,
+                old_version=old_version,
+                new_version=new_version if committed else old_version,
+                old_ratio=old_ratio,
+                new_ratio=new_ratio,
+                improvement=improvement,
+                committed=committed,
+                sample_count=len(samples),
+                duration_ms=ms,
             )
 
     @staticmethod
     def _ab_test(
-        corpus:        list[bytes],
-        old_cdict:     zstd.ZstdCompressionDict | None,
+        corpus: list[bytes],
+        old_cdict: zstd.ZstdCompressionDict | None,
         candidate_raw: bytes,
     ) -> tuple[float, float]:
         """
@@ -338,14 +347,14 @@ class AdaptiveDictManager:
         )
         cctx_old = zstd.ZstdCompressor(
             compression_params=params,
-            dict_data=old_cdict,   # None → vanilla
+            dict_data=old_cdict,  # None → vanilla
         )
 
         old_sizes, new_sizes = 0, 0
         total_orig = 0
         for sample in corpus:
-            old_sizes  += len(cctx_old.compress(sample))
-            new_sizes  += len(cctx_new.compress(sample))
+            old_sizes += len(cctx_old.compress(sample))
+            new_sizes += len(cctx_new.compress(sample))
             total_orig += len(sample)
 
         old_ratio = total_orig / max(old_sizes, 1)
@@ -362,9 +371,9 @@ class AdaptiveDictManager:
 # ── singleton ─────────────────────────────────────────────────────────────── #
 # Instantiated once and wired into the engine in main.py lifespan.
 adaptive_dict = AdaptiveDictManager(
-    retrain_every_n = 50,    # retrain after every 50 new seals
-    min_improvement = 1.0,   # only commit if at least 1% better
-    buffer_max      = 500,   # keep last 500 samples in rolling buffer
-    min_samples     = 20,    # need at least 20 before first train
-    dict_size_bytes = 112 * 1024,
+    retrain_every_n=50,  # retrain after every 50 new seals
+    min_improvement=1.0,  # only commit if at least 1% better
+    buffer_max=500,  # keep last 500 samples in rolling buffer
+    min_samples=20,  # need at least 20 before first train
+    dict_size_bytes=112 * 1024,
 )

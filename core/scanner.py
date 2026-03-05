@@ -41,19 +41,32 @@ from models.pulse_models import (
 
 # ─────────────────────────────── constants ────────────────────────────────── #
 
-SCAN_QUEUE_SIZE   = 4_096
-SCAN_WORKERS      = min(32, (os.cpu_count() or 4) * 4)
-HASH_CHUNK_BYTES  = 256 * 1024   # 256 KiB read chunks for content hashing
-_SENTINEL         = None         # poison-pill to stop consumers
+SCAN_QUEUE_SIZE = 4_096
+SCAN_WORKERS = min(32, (os.cpu_count() or 4) * 4)
+HASH_CHUNK_BYTES = 256 * 1024  # 256 KiB read chunks for content hashing
+_SENTINEL = None  # poison-pill to stop consumers
 
 # File extensions to skip during scan (binary noise for LLM pipelines)
-_SKIP_EXTENSIONS = frozenset({
-    ".pyc", ".pyo", ".so", ".dll", ".dylib",
-    ".exe", ".bin", ".o", ".a", ".lib",
-    ".DS_Store", ".git", ".gitkeep",
-})
+_SKIP_EXTENSIONS = frozenset(
+    {
+        ".pyc",
+        ".pyo",
+        ".so",
+        ".dll",
+        ".dylib",
+        ".exe",
+        ".bin",
+        ".o",
+        ".a",
+        ".lib",
+        ".DS_Store",
+        ".git",
+        ".gitkeep",
+    }
+)
 
 # ─────────────────────────────── sync producer ────────────────────────────── #
+
 
 def _scandir_producer(
     root: str,
@@ -99,6 +112,7 @@ def _scandir_producer(
 
 # ─────────────────────────────── async content hasher ─────────────────────── #
 
+
 async def _hash_file(path: str) -> str:
     """SHA3-256 of file contents, async read in 256 KiB chunks."""
     h = hashlib.sha3_256()
@@ -113,6 +127,7 @@ async def _hash_file(path: str) -> str:
 
 
 # ─────────────────────────────── QuantumScanner ───────────────────────────── #
+
 
 class QuantumScanner:
     """
@@ -130,23 +145,23 @@ class QuantumScanner:
         self,
         root: str,
         *,
-        mode:          ScanMode = ScanMode.RECURSIVE,
-        max_depth:     int      = -1,       # -1 = unlimited
-        skip_hidden:   bool     = True,
-        hash_contents: bool     = True,     # SHA3-256 per file (slower but enables dedup)
-        shard_on_entropy: bool  = True,
-        n_workers:     int      = SCAN_WORKERS,
-        on_shard:      Callable[[DirManifest], None] | None = None,
+        mode: ScanMode = ScanMode.RECURSIVE,
+        max_depth: int = -1,  # -1 = unlimited
+        skip_hidden: bool = True,
+        hash_contents: bool = True,  # SHA3-256 per file (slower but enables dedup)
+        shard_on_entropy: bool = True,
+        n_workers: int = SCAN_WORKERS,
+        on_shard: Callable[[DirManifest], None] | None = None,
     ) -> None:
-        self.root             = os.path.abspath(root)
-        self.mode             = mode
-        self.max_depth        = max_depth
-        self.skip_hidden      = skip_hidden
-        self.hash_contents    = hash_contents
+        self.root = os.path.abspath(root)
+        self.mode = mode
+        self.max_depth = max_depth
+        self.skip_hidden = skip_hidden
+        self.hash_contents = hash_contents
         self.shard_on_entropy = shard_on_entropy
-        self.n_workers        = n_workers
-        self.on_shard         = on_shard
-        self._stats           = ScanStats()
+        self.n_workers = n_workers
+        self.on_shard = on_shard
+        self._stats = ScanStats()
 
     # ── public ─────────────────────────────────────────────────────────────── #
 
@@ -155,9 +170,9 @@ class QuantumScanner:
         Async generator yielding DirManifest objects.
         Each manifest corresponds to one directory (or sub-shard if sharded).
         """
-        t0            = time.perf_counter()
+        t0 = time.perf_counter()
         raw_queue: Queue = Queue(maxsize=SCAN_QUEUE_SIZE)
-        loop          = asyncio.get_running_loop()
+        loop = asyncio.get_running_loop()
         asyncio.Queue()
 
         # ── start producer in background thread ──────────────────────────── #
@@ -168,10 +183,15 @@ class QuantumScanner:
             name="qp-scanner-producer",
         )
         producer.start()
-        logger.info("Scanner started  root={}  mode={}  workers={}", self.root, self.mode.value, self.n_workers)
+        logger.info(
+            "Scanner started  root={}  mode={}  workers={}",
+            self.root,
+            self.mode.value,
+            self.n_workers,
+        )
 
         # ── consumer coroutines ───────────────────────────────────────────── #
-        dir_buckets: dict[str, list[FileEntry]] = {}   # dir_path → entries
+        dir_buckets: dict[str, list[FileEntry]] = {}  # dir_path → entries
 
         async def consumer() -> None:
             """Pull entries from the thread-safe Queue, process, bucket by dir."""
@@ -197,11 +217,11 @@ class QuantumScanner:
                     continue
 
                 file_entry = FileEntry(
-                    path    = entry.path,
-                    name    = entry.name,
-                    size    = stat.st_size if not entry.is_dir(follow_symlinks=False) else 0,
-                    mtime   = stat.st_mtime,
-                    is_dir  = entry.is_dir(follow_symlinks=False),
+                    path=entry.path,
+                    name=entry.name,
+                    size=stat.st_size if not entry.is_dir(follow_symlinks=False) else 0,
+                    mtime=stat.st_mtime,
+                    is_dir=entry.is_dir(follow_symlinks=False),
                 )
 
                 if self.hash_contents and not file_entry.is_dir:
@@ -231,10 +251,10 @@ class QuantumScanner:
 
         for dir_path, entries in dir_buckets.items():
             manifest = DirManifest(
-                root_path  = dir_path,
-                entries    = entries,
-                depth      = self._count_depth(dir_path),
-                stats      = self._stats,
+                root_path=dir_path,
+                entries=entries,
+                depth=self._count_depth(dir_path),
+                stats=self._stats,
             )
             if self.shard_on_entropy:
                 async for sub in self._maybe_shard(manifest):
@@ -261,15 +281,13 @@ class QuantumScanner:
 
     # ── private ────────────────────────────────────────────────────────────── #
 
-    async def _maybe_shard(
-        self, manifest: DirManifest
-    ) -> AsyncIterator[DirManifest]:
+    async def _maybe_shard(self, manifest: DirManifest) -> AsyncIterator[DirManifest]:
         """
         Check if the manifest's MsgPack representation exceeds the entropy
         threshold.  If so, split it into one sub-manifest per sub-directory.
         """
-        packed   = msgpack.packb(manifest.model_dump(), use_bin_type=True)
-        entropy  = shannon_entropy(packed)
+        packed = msgpack.packb(manifest.model_dump(), use_bin_type=True)
+        entropy = shannon_entropy(packed)
 
         if entropy < ENTROPY_SHARD_THRESHOLD:
             yield manifest
@@ -277,7 +295,9 @@ class QuantumScanner:
 
         logger.debug(
             "Sharding {}  entropy={:.4f}  entries={}",
-            manifest.root_path, entropy, len(manifest.entries),
+            manifest.root_path,
+            entropy,
+            len(manifest.entries),
         )
 
         # Partition entries by immediate parent → one shard per sub-directory
@@ -294,10 +314,10 @@ class QuantumScanner:
         self._stats.shards_created += len(sub_dirs)
         for sub_path, sub_entries in sub_dirs.items():
             sub_manifest = DirManifest(
-                root_path = sub_path,
-                entries   = sub_entries,
-                depth     = self._count_depth(sub_path),
-                stats     = self._stats,
+                root_path=sub_path,
+                entries=sub_entries,
+                depth=self._count_depth(sub_path),
+                stats=self._stats,
             )
             if self.on_shard:
                 self.on_shard(sub_manifest)

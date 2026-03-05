@@ -38,13 +38,15 @@ from core.config import get_settings
 
 # ─────────────────────────────── types ────────────────────────────────────── #
 
+
 @dataclass
 class Principal:
     """Resolved identity attached to every authenticated request."""
-    identity:    str              # "api_key:last4" or "jwt:subject"
-    auth_method: str              # "api_key" | "jwt" | "anon"
-    scopes:      list[str]        # ["read", "write", "admin"]
-    issued_at:   float            # unix timestamp
+
+    identity: str  # "api_key:last4" or "jwt:subject"
+    auth_method: str  # "api_key" | "jwt" | "anon"
+    scopes: list[str]  # ["read", "write", "admin"]
+    issued_at: float  # unix timestamp
 
 
 ANON = Principal(identity="anon", auth_method="anon", scopes=["read"], issued_at=0.0)
@@ -52,20 +54,21 @@ ANON = Principal(identity="anon", auth_method="anon", scopes=["read"], issued_at
 # ─────────────────────────────── security schemes ─────────────────────────── #
 
 _api_key_header = APIKeyHeader(name=get_settings().api_key_header, auto_error=False)
-_bearer         = HTTPBearer(auto_error=False)
-_pwd_context    = CryptContext(schemes=["bcrypt"], deprecated="auto")
+_bearer = HTTPBearer(auto_error=False)
+_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # ─────────────────────────────── JWT helpers ──────────────────────────────── #
+
 
 def create_access_token(subject: str, scopes: list[str] | None = None) -> str:
     cfg = get_settings()
     now = time.time()
     payload = {
-        "sub":    subject,
+        "sub": subject,
         "scopes": scopes or ["read", "write"],
-        "iat":    now,
-        "exp":    now + cfg.jwt_expire_minutes * 60,
-        "iss":    "quantum-pulse",
+        "iat": now,
+        "exp": now + cfg.jwt_expire_minutes * 60,
+        "iss": "quantum-pulse",
     }
     return jwt.encode(
         payload,
@@ -85,6 +88,7 @@ def decode_token(token: str) -> dict:
 
 # ─────────────────────────────── API key validation ──────────────────────────#
 
+
 def _validate_api_key(key: str) -> Principal | None:
     """Constant-time comparison against all configured API keys."""
     cfg = get_settings()
@@ -96,18 +100,19 @@ def _validate_api_key(key: str) -> Principal | None:
         ):
             last4 = key[-4:] if len(key) >= 4 else "****"
             return Principal(
-                identity    = f"api_key:***{last4}",
-                auth_method = "api_key",
-                scopes      = ["read", "write", "admin"],
-                issued_at   = time.time(),
+                identity=f"api_key:***{last4}",
+                auth_method="api_key",
+                scopes=["read", "write", "admin"],
+                issued_at=time.time(),
             )
     return None
 
 
 # ─────────────────────────────── FastAPI dependencies ─────────────────────── #
 
+
 async def require_api_key(
-    request:  Request,
+    request: Request,
     api_key: str | None = Security(_api_key_header),
 ) -> Principal:
     """Dependency: block unless a valid API key is provided."""
@@ -120,17 +125,19 @@ async def require_api_key(
 
     if not api_key:
         raise HTTPException(
-            status_code = status.HTTP_401_UNAUTHORIZED,
-            detail      = "API key required",
-            headers     = {"WWW-Authenticate": 'APIKey realm="quantum-pulse"'},
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="API key required",
+            headers={"WWW-Authenticate": 'APIKey realm="quantum-pulse"'},
         )
 
     principal = _validate_api_key(api_key)
     if principal is None:
-        logger.warning("Invalid API key attempt  ip={}", request.client.host if request.client else "?")
+        logger.warning(
+            "Invalid API key attempt  ip={}", request.client.host if request.client else "?"
+        )
         raise HTTPException(
-            status_code = status.HTTP_403_FORBIDDEN,
-            detail      = "Invalid API key",
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid API key",
         )
 
     request.state.principal = principal
@@ -138,9 +145,9 @@ async def require_api_key(
 
 
 async def require_auth(
-    request:  Request,
-    api_key: str | None                       = Security(_api_key_header),
-    bearer:  HTTPAuthorizationCredentials | None = Depends(_bearer),
+    request: Request,
+    api_key: str | None = Security(_api_key_header),
+    bearer: HTTPAuthorizationCredentials | None = Depends(_bearer),
 ) -> Principal:
     """Dependency: accept valid API key OR valid JWT bearer token."""
     cfg = get_settings()
@@ -159,12 +166,12 @@ async def require_auth(
     # Try JWT
     if bearer:
         try:
-            claims    = decode_token(bearer.credentials)
+            claims = decode_token(bearer.credentials)
             principal = Principal(
-                identity    = f"jwt:{claims['sub']}",
-                auth_method = "jwt",
-                scopes      = claims.get("scopes", ["read"]),
-                issued_at   = claims.get("iat", 0.0),
+                identity=f"jwt:{claims['sub']}",
+                auth_method="jwt",
+                scopes=claims.get("scopes", ["read"]),
+                issued_at=claims.get("iat", 0.0),
             )
             request.state.principal = principal
             return principal
@@ -172,16 +179,16 @@ async def require_auth(
             logger.warning("JWT validation failed: {}", exc)
 
     raise HTTPException(
-        status_code = status.HTTP_401_UNAUTHORIZED,
-        detail      = "Valid API key or Bearer token required",
-        headers     = {"WWW-Authenticate": 'Bearer realm="quantum-pulse"'},
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Valid API key or Bearer token required",
+        headers={"WWW-Authenticate": 'Bearer realm="quantum-pulse"'},
     )
 
 
 async def optional_auth(
-    request:  Request,
-    api_key: str | None                       = Security(_api_key_header),
-    bearer:  HTTPAuthorizationCredentials | None = Depends(_bearer),
+    request: Request,
+    api_key: str | None = Security(_api_key_header),
+    bearer: HTTPAuthorizationCredentials | None = Depends(_bearer),
 ) -> Principal | None:
     """Dependency: resolve identity if credentials present; never raises."""
     try:
@@ -193,13 +200,15 @@ async def optional_auth(
 
 def require_scope(scope: str):
     """Dependency factory: ensure authenticated principal has a specific scope."""
+
     async def _check(principal: Principal = Depends(require_auth)) -> Principal:
         if scope not in principal.scopes:
             raise HTTPException(
-                status_code = status.HTTP_403_FORBIDDEN,
-                detail      = f"Scope '{scope}' required",
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Scope '{scope}' required",
             )
         return principal
+
     return _check
 
 
@@ -214,8 +223,8 @@ class TokenRequest(BaseModel):
 
 class TokenResponse(BaseModel):
     access_token: str
-    token_type:   str = "bearer"
-    expires_in:   int
+    token_type: str = "bearer"
+    expires_in: int
 
 
 @auth_router.post("/token", response_model=TokenResponse)
@@ -228,9 +237,9 @@ async def issue_token(req: TokenRequest) -> TokenResponse:
     if not principal:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Invalid API key")
 
-    cfg   = get_settings()
+    cfg = get_settings()
     token = create_access_token(principal.identity, principal.scopes)
     return TokenResponse(
-        access_token = token,
-        expires_in   = cfg.jwt_expire_minutes * 60,
+        access_token=token,
+        expires_in=cfg.jwt_expire_minutes * 60,
     )

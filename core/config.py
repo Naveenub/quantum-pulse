@@ -24,15 +24,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Environment(StrEnum):
     DEVELOPMENT = "development"
-    STAGING     = "staging"
-    PRODUCTION  = "production"
+    STAGING = "staging"
+    PRODUCTION = "production"
 
 
 class LogLevel(StrEnum):
-    DEBUG   = "DEBUG"
-    INFO    = "INFO"
+    DEBUG = "DEBUG"
+    INFO = "INFO"
     WARNING = "WARNING"
-    ERROR   = "ERROR"
+    ERROR = "ERROR"
 
 
 class Settings(BaseSettings):
@@ -48,12 +48,12 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_prefix        = "QUANTUM_",
-        env_file          = ".env",
-        env_file_encoding = "utf-8",
-        case_sensitive    = False,
-        frozen            = True,       # immutable after startup
-        extra             = "ignore",
+        env_prefix="QUANTUM_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        frozen=True,  # immutable after startup
+        extra="ignore",
     )
 
     # ── Environment ───────────────────────────────────────────────────────── #
@@ -64,72 +64,70 @@ class Settings(BaseSettings):
         default=...,
         description="Master encryption passphrase (min 16 chars)",
     )
-    api_key_enabled: bool     = True
-    api_keys: list[str]       = Field(default_factory=list)
-    api_key_header: str       = "X-API-Key"
-    jwt_secret: SecretStr     = Field(
-        default_factory=lambda: SecretStr(secrets.token_urlsafe(32))
-    )
-    jwt_algorithm: str        = "HS256"
-    jwt_expire_minutes: int   = 60
+    api_key_enabled: bool = True
+    api_keys: list[str] = Field(default_factory=list)
+    api_key_header: str = "X-API-Key"
+    jwt_secret: SecretStr = Field(default_factory=lambda: SecretStr(secrets.token_urlsafe(32)))
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 60
 
     # ── MongoDB ───────────────────────────────────────────────────────────── #
-    mongo_uri: str            = "mongodb://localhost:27017"
-    mongo_db: str             = "quantum_pulse"
-    mongo_max_pool_size: int  = 100
-    mongo_min_pool_size: int  = 10
-    mongo_timeout_ms: int     = 5_000
-    mongo_retry_writes: bool  = True
+    mongo_uri: str = "mongodb://localhost:27017"
+    mongo_db: str = "quantum_pulse"
+    mongo_max_pool_size: int = 100
+    mongo_min_pool_size: int = 10
+    mongo_timeout_ms: int = 5_000
+    mongo_retry_writes: bool = True
 
     # ── API Server ────────────────────────────────────────────────────────── #
-    host: str                 = "127.0.0.1"
-    port: int                 = Field(default=8747, ge=1024, le=65535)
-    workers: int              = Field(default=1, ge=1, le=32)
-    reload: bool              = False
-    cors_origins: list[str]   = Field(default_factory=lambda: ["http://localhost:3000"])
-    max_request_size_mb: int  = Field(default=256, ge=1, le=2048)
-    request_timeout_s: int    = Field(default=120, ge=5, le=600)
+    host: str = "127.0.0.1"
+    port: int = Field(default=8747, ge=1024, le=65535)
+    workers: int = Field(default=1, ge=1, le=32)
+    reload: bool = False
+    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
+    max_request_size_mb: int = Field(default=256, ge=1, le=2048)
+    request_timeout_s: int = Field(default=120, ge=5, le=600)
 
     # ── Rate Limiting ─────────────────────────────────────────────────────── #
-    rate_limit_enabled: bool  = True
+    rate_limit_enabled: bool = True
     rate_limit_per_minute: int = Field(default=120, ge=1)
-    rate_limit_burst: int     = Field(default=20, ge=1)
+    rate_limit_burst: int = Field(default=20, ge=1)
 
     # ── Logging ───────────────────────────────────────────────────────────── #
-    log_level: LogLevel       = LogLevel.INFO
-    log_dir: str              = "logs"
-    log_rotation: str         = "50 MB"
-    log_retention: str        = "30 days"
-    log_format: str           = "json"       # "json" | "text"
-    log_request_bodies: bool  = False        # never in production
+    log_level: LogLevel = LogLevel.INFO
+    log_dir: str = "logs"
+    log_rotation: str = "50 MB"
+    log_retention: str = "30 days"
+    log_format: str = "json"  # "json" | "text"
+    log_request_bodies: bool = False  # never in production
 
     # ── Compression ───────────────────────────────────────────────────────── #
-    zstd_level: int           = Field(default=22, ge=1, le=22)
-    zstd_dict_size_kb: int    = Field(default=112, ge=16, le=1024)
-    zstd_sample_ratio: float  = Field(default=0.05, gt=0, le=0.5)
+    zstd_level: int = Field(default=22, ge=1, le=22)
+    zstd_dict_size_kb: int = Field(default=112, ge=16, le=1024)
+    zstd_sample_ratio: float = Field(default=0.05, gt=0, le=0.5)
 
     # ── Key Management ────────────────────────────────────────────────────── #
-    kdf_iterations: int       = Field(default=600_000, ge=100_000)
+    kdf_iterations: int = Field(default=600_000, ge=100_000)
     key_rotation_interval_h: int = Field(default=168, ge=1)  # 7 days default
-    key_cache_ttl_s: int      = Field(default=300, ge=60)
+    key_cache_ttl_s: int = Field(default=300, ge=60)
 
     # ── Observability ─────────────────────────────────────────────────────── #
-    metrics_enabled: bool     = True
-    metrics_path: str         = "/metrics"
-    tracing_enabled: bool     = False
+    metrics_enabled: bool = True
+    metrics_path: str = "/metrics"
+    tracing_enabled: bool = False
     otlp_endpoint: str | None = None
 
     # ── Scheduler ─────────────────────────────────────────────────────────── #
-    scheduler_enabled: bool   = True
+    scheduler_enabled: bool = True
     health_check_interval_s: int = 30
 
     # ── Storage ───────────────────────────────────────────────────────────── #
-    gridfs_threshold_mb: int  = Field(default=16, ge=1, le=256)
-    pulse_ttl_days: int | None = None   # None = never expire
+    gridfs_threshold_mb: int = Field(default=16, ge=1, le=256)
+    pulse_ttl_days: int | None = None  # None = never expire
 
     # ── Audit ─────────────────────────────────────────────────────────────── #
-    audit_enabled: bool       = True
-    audit_log_file: str       = "logs/audit.jsonl"
+    audit_enabled: bool = True
+    audit_log_file: str = "logs/audit.jsonl"
 
     # ─────────────────────────────── validators ───────────────────────────── #
 
@@ -147,10 +145,7 @@ class Settings(BaseSettings):
     def _passphrase_strength(cls, v: SecretStr) -> SecretStr:
         raw = v.get_secret_value()
         if len(raw) < 16:
-            raise ValueError(
-                "QUANTUM_PASSPHRASE must be at least 16 characters. "
-                f"Got {len(raw)}."
-            )
+            raise ValueError(f"QUANTUM_PASSPHRASE must be at least 16 characters. Got {len(raw)}.")
         return v
 
     @field_validator("api_keys", mode="before")

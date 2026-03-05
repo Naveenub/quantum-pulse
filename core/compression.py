@@ -31,18 +31,19 @@ from core.engine import (
 
 # ─────────────────────────────── constants ────────────────────────────────── #
 
-STREAM_CHUNK_BYTES = 256 * 1024     # 256 KiB streaming chunks
-MIN_DICT_SAMPLE_BYTES = 1_024       # Skip samples smaller than 1 KiB
+STREAM_CHUNK_BYTES = 256 * 1024  # 256 KiB streaming chunks
+MIN_DICT_SAMPLE_BYTES = 1_024  # Skip samples smaller than 1 KiB
 
 # ─────────────────────────────── result types ─────────────────────────────── #
 
+
 @dataclass
 class CompressResult:
-    original_bytes:   int
+    original_bytes: int
     compressed_bytes: int
-    ratio:            float
-    duration_ms:      float
-    dict_id:          int | None = None
+    ratio: float
+    duration_ms: float
+    dict_id: int | None = None
 
     @property
     def throughput_mb_s(self) -> float:
@@ -53,16 +54,17 @@ class CompressResult:
 
 @dataclass
 class BenchmarkReport:
-    vanilla_ratio:  float
-    dict_ratio:     float
+    vanilla_ratio: float
+    dict_ratio: float
     improvement_pct: float
-    vanilla_ms:     float
-    dict_ms:        float
-    sample_count:   int
-    sample_bytes:   int
+    vanilla_ms: float
+    dict_ms: float
+    sample_count: int
+    sample_bytes: int
 
 
 # ─────────────────────────────── PulseCompressor ──────────────────────────── #
+
 
 class PulseCompressor:
     """
@@ -101,17 +103,15 @@ class PulseCompressor:
     async def compress(self, data: bytes) -> tuple[bytes, CompressResult]:
         """Compress *data* using current dict (if trained) at Zstd L22."""
         loop = asyncio.get_running_loop()
-        t0   = time.perf_counter()
-        compressed: bytes = await loop.run_in_executor(
-            _CPU_POOL, self._sync_compress, data
-        )
+        t0 = time.perf_counter()
+        compressed: bytes = await loop.run_in_executor(_CPU_POOL, self._sync_compress, data)
         ms = (time.perf_counter() - t0) * 1_000
         result = CompressResult(
-            original_bytes   = len(data),
-            compressed_bytes = len(compressed),
-            ratio            = len(data) / max(len(compressed), 1),
-            duration_ms      = ms,
-            dict_id          = self._trainer.dict_id,
+            original_bytes=len(data),
+            compressed_bytes=len(compressed),
+            ratio=len(data) / max(len(compressed), 1),
+            duration_ms=ms,
+            dict_id=self._trainer.dict_id,
         )
         logger.debug(
             "Compress  {}→{}  ratio={:.2f}×  {:.1f} ms  {:.1f} MB/s",
@@ -129,16 +129,14 @@ class PulseCompressor:
 
     # ── streaming compress ─────────────────────────────────────────────────── #
 
-    async def compress_stream(
-        self, source: AsyncIterator[bytes]
-    ) -> AsyncIterator[bytes]:
+    async def compress_stream(self, source: AsyncIterator[bytes]) -> AsyncIterator[bytes]:
         """
         Stream-compress an async byte iterator.
         Yields compressed chunks as they are produced (lower peak memory).
         """
         loop = asyncio.get_running_loop()
         self._trainer.compressor()
-        buf  = io.BytesIO()
+        buf = io.BytesIO()
 
         # Collect stream into buffer (zstd streaming requires synchronous writes)
         async for chunk in source:
@@ -151,12 +149,10 @@ class PulseCompressor:
         for i in range(0, len(compressed), STREAM_CHUNK_BYTES):
             yield compressed[i : i + STREAM_CHUNK_BYTES]
 
-    async def decompress_stream(
-        self, source: AsyncIterator[bytes]
-    ) -> AsyncIterator[bytes]:
+    async def decompress_stream(self, source: AsyncIterator[bytes]) -> AsyncIterator[bytes]:
         """Stream-decompress an async byte iterator."""
         loop = asyncio.get_running_loop()
-        buf  = io.BytesIO()
+        buf = io.BytesIO()
         async for chunk in source:
             buf.write(chunk)
         raw = await loop.run_in_executor(_CPU_POOL, self._sync_decompress, buf.getvalue())
@@ -189,7 +185,7 @@ class PulseCompressor:
         vanilla_ms = (time.perf_counter() - t0) * 1_000
 
         vanilla_original = sum(len(s) for s in samples)
-        vanilla_ratio    = vanilla_original / max(len(vanilla_compressed), 1)
+        vanilla_ratio = vanilla_original / max(len(vanilla_compressed), 1)
 
         # Dict-assisted
         if not self._trainer.is_trained:
@@ -207,17 +203,19 @@ class PulseCompressor:
         improvement = ((dict_ratio - vanilla_ratio) / max(vanilla_ratio, 1)) * 100
 
         report = BenchmarkReport(
-            vanilla_ratio   = vanilla_ratio,
-            dict_ratio      = dict_ratio,
-            improvement_pct = improvement,
-            vanilla_ms      = vanilla_ms,
-            dict_ms         = dict_ms,
-            sample_count    = len(samples),
-            sample_bytes    = vanilla_original,
+            vanilla_ratio=vanilla_ratio,
+            dict_ratio=dict_ratio,
+            improvement_pct=improvement,
+            vanilla_ms=vanilla_ms,
+            dict_ms=dict_ms,
+            sample_count=len(samples),
+            sample_bytes=vanilla_original,
         )
         logger.success(
             "Benchmark  vanilla={:.2f}×  dict={:.2f}×  improvement=+{:.1f}%",
-            vanilla_ratio, dict_ratio, improvement,
+            vanilla_ratio,
+            dict_ratio,
+            improvement,
         )
         return report
 
@@ -241,8 +239,8 @@ class PulseCompressor:
             params = zstd.get_frame_parameters(data)
             return {
                 "content_size": params.content_size,
-                "window_size":  params.window_size,
-                "dict_id":      params.dict_id,
+                "window_size": params.window_size,
+                "dict_id": params.dict_id,
                 "has_checksum": params.has_checksum,
             }
         except Exception as exc:

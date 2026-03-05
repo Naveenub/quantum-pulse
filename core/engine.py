@@ -46,32 +46,36 @@ from models.pulse_models import (
 
 # Adaptive dict manager — imported lazily to avoid circular dependency
 _ADAPTIVE_CLS = None
+
+
 def _adaptive_cls():
     global _ADAPTIVE_CLS
     if _ADAPTIVE_CLS is None:
         from core.adaptive import AdaptiveDictManager  # noqa: PLC0415
+
         _ADAPTIVE_CLS = AdaptiveDictManager
     return _ADAPTIVE_CLS
 
+
 # ─────────────────────────────── constants ────────────────────────────────── #
 
-ZSTD_LEVEL:              Final[int]   = 22
-ZSTD_WINDOW_LOG:         Final[int]   = 27          # 128 MiB sliding window
-ZSTD_THREADS:            Final[int]   = os.cpu_count() or 4
-ZSTD_DICT_SAMPLE_RATIO:  Final[float] = 0.05        # first 5 % of corpus
+ZSTD_LEVEL: Final[int] = 22
+ZSTD_WINDOW_LOG: Final[int] = 27  # 128 MiB sliding window
+ZSTD_THREADS: Final[int] = os.cpu_count() or 4
+ZSTD_DICT_SAMPLE_RATIO: Final[float] = 0.05  # first 5 % of corpus
 
-AES_KEY_BYTES:           Final[int]   = 32           # 256-bit
-AES_NONCE_BYTES:         Final[int]   = 12           # 96-bit GCM nonce
-AES_TAG_BYTES:           Final[int]   = 16           # 128-bit auth tag
+AES_KEY_BYTES: Final[int] = 32  # 256-bit
+AES_NONCE_BYTES: Final[int] = 12  # 96-bit GCM nonce
+AES_TAG_BYTES: Final[int] = 16  # 128-bit auth tag
 
-KDF_ITERATIONS:          Final[int]   = 600_000      # OWASP 2024
-KDF_SALT_BYTES:          Final[int]   = 32
+KDF_ITERATIONS: Final[int] = 600_000  # OWASP 2024
+KDF_SALT_BYTES: Final[int] = 32
 
-BLOB_MAGIC:              Final[bytes] = b"QPLS"
-BLOB_VERSION:            Final[int]   = 1
+BLOB_MAGIC: Final[bytes] = b"QPLS"
+BLOB_VERSION: Final[int] = 1
 
-ENTROPY_SHARD_THRESHOLD: Final[float] = 0.92        # bits/byte
-GRIDFS_THRESHOLD_BYTES:  Final[int]   = 16 * 1024 * 1024
+ENTROPY_SHARD_THRESHOLD: Final[float] = 0.92  # bits/byte
+GRIDFS_THRESHOLD_BYTES: Final[int] = 16 * 1024 * 1024
 
 _CPU_POOL = ThreadPoolExecutor(
     max_workers=ZSTD_THREADS,
@@ -84,8 +88,8 @@ _CPU_POOL = ThreadPoolExecutor(
 #  │ MAGIC 4B │ VER1B │  NONCE 12B  │  CIPHERTEXT + GCM-TAG (var)   │
 #  └──────────┴───────┴─────────────┴────────────────────────────────┘
 #
-HEADER_FMT:  Final[str] = f"!4sB{AES_NONCE_BYTES}s"
-HEADER_SIZE: Final[int] = struct.calcsize(HEADER_FMT)   # 17 bytes
+HEADER_FMT: Final[str] = f"!4sB{AES_NONCE_BYTES}s"
+HEADER_SIZE: Final[int] = struct.calcsize(HEADER_FMT)  # 17 bytes
 
 
 def _pack_header(nonce: bytes) -> bytes:
@@ -100,6 +104,7 @@ def _unpack_header(raw: bytes) -> tuple[int, bytes]:
 
 
 # ─────────────────────────────── helpers ──────────────────────────────────── #
+
 
 def shannon_entropy(data: bytes) -> float:
     """Shannon entropy in bits/byte — pure Python, no deps."""
@@ -131,7 +136,7 @@ def build_merkle_tree(leaves: Sequence[bytes]) -> tuple[list[str], str]:
 
     while len(layer) > 1:
         if len(layer) % 2:
-            layer.append(layer[-1])          # duplicate last leaf if odd
+            layer.append(layer[-1])  # duplicate last leaf if odd
         next_layer: list[bytes] = []
         for i in range(0, len(layer), 2):
             next_layer.append(hashlib.sha3_256(layer[i] + layer[i + 1]).digest())
@@ -157,6 +162,7 @@ def _sizeof_fmt(num: float) -> str:
 
 # ─────────────────────────────── VaultKey ─────────────────────────────────── #
 
+
 class VaultKey:
     """
     PBKDF2-SHA256 derived 256-bit key.
@@ -178,23 +184,29 @@ class VaultKey:
         logger.debug("VaultKey derived  salt={}…", self._salt.hex()[:12])
 
     @property
-    def raw(self)      -> bytes: return self._key
+    def raw(self) -> bytes:
+        return self._key
+
     @property
-    def hex(self)      -> str:   return self._key.hex()
+    def hex(self) -> str:
+        return self._key.hex()
+
     @property
-    def salt(self)     -> bytes: return self._salt
+    def salt(self) -> bytes:
+        return self._salt
+
     @property
-    def salt_hex(self) -> str:   return self._salt.hex()
+    def salt_hex(self) -> str:
+        return self._salt.hex()
 
     @classmethod
-    async def derive_async(
-        cls, passphrase: str, salt: bytes | None = None
-    ) -> VaultKey:
+    async def derive_async(cls, passphrase: str, salt: bytes | None = None) -> VaultKey:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(_CPU_POOL, cls, passphrase, salt)
 
 
 # ─────────────────────────────── ZstdDictTrainer ──────────────────────────── #
+
 
 class ZstdDictTrainer:
     """
@@ -250,6 +262,7 @@ class ZstdDictTrainer:
 
 # ─────────────────────────────── QuantumEngine ────────────────────────────── #
 
+
 class QuantumEngine:
     """
     Thread-safe, async-first core pipeline.
@@ -263,16 +276,18 @@ class QuantumEngine:
         passphrase: str,
         *,
         dict_trainer: ZstdDictTrainer | None = None,
-        adaptive_dict = None,   # Optional[AdaptiveDictManager]
+        adaptive_dict=None,  # Optional[AdaptiveDictManager]
         aad: bytes = b"QUANTUM-PULSE-v1",
     ) -> None:
-        self._passphrase  = passphrase
-        self._trainer     = dict_trainer or ZstdDictTrainer()
-        self._adaptive    = adaptive_dict  # wired in by main.py lifespan
-        self._aad         = aad
+        self._passphrase = passphrase
+        self._trainer = dict_trainer or ZstdDictTrainer()
+        self._adaptive = adaptive_dict  # wired in by main.py lifespan
+        self._aad = aad
         logger.info(
             "QuantumEngine ready  zstd=L{}  window={}  aes=256-GCM  kdf=PBKDF2-{}k",
-            ZSTD_LEVEL, _sizeof_fmt(2 ** ZSTD_WINDOW_LOG), KDF_ITERATIONS // 1000,
+            ZSTD_LEVEL,
+            _sizeof_fmt(2**ZSTD_WINDOW_LOG),
+            KDF_ITERATIONS // 1000,
         )
 
     # ── public API ─────────────────────────────────────────────────────────── #
@@ -286,7 +301,7 @@ class QuantumEngine:
         tags: dict[str, str] | None = None,
     ) -> tuple[bytes, PulseBlob]:
         """Serialise → compress → encrypt.  Returns (wire_blob, PulseBlob)."""
-        t0   = time.perf_counter()
+        t0 = time.perf_counter()
         loop = asyncio.get_running_loop()
 
         # 1. MsgPack
@@ -306,38 +321,39 @@ class QuantumEngine:
         vk = await VaultKey.derive_async(self._passphrase)
 
         # 5. AES-256-GCM (CPU → pool)
-        nonce      = os.urandom(AES_NONCE_BYTES)
-        ciphertext = await loop.run_in_executor(
-            _CPU_POOL, self._encrypt, compressed, vk.raw, nonce
-        )
+        nonce = os.urandom(AES_NONCE_BYTES)
+        ciphertext = await loop.run_in_executor(_CPU_POOL, self._encrypt, compressed, vk.raw, nonce)
 
         # 6. Assemble wire blob
-        blob           = _pack_header(nonce) + ciphertext
-        chunk_hash     = hashlib.sha3_256(ciphertext).hexdigest()
+        blob = _pack_header(nonce) + ciphertext
+        chunk_hash = hashlib.sha3_256(ciphertext).hexdigest()
         _, merkle_root = build_merkle_tree([ciphertext])
 
         duration_ms = (time.perf_counter() - t0) * 1_000
         stats = CompressionStats(
-            original_bytes   = len(packed),
-            packed_bytes     = len(packed),
-            compressed_bytes = len(compressed),
-            encrypted_bytes  = len(blob),
-            duration_ms      = duration_ms,
-            entropy_bits_per_byte = entropy,
+            original_bytes=len(packed),
+            packed_bytes=len(packed),
+            compressed_bytes=len(compressed),
+            encrypted_bytes=len(blob),
+            duration_ms=duration_ms,
+            entropy_bits_per_byte=entropy,
         )
         dict_ver = self._adaptive.current_version if self._adaptive else 0
         meta = PulseBlob(
-            pulse_id     = pulse_id,
-            parent_id    = parent_id,
-            merkle_root  = merkle_root,
-            chunk_hash   = chunk_hash,
-            salt         = vk.salt_hex,
-            nonce        = nonce.hex(),
-            zstd_dict_id = (self._adaptive.dict_id if self._adaptive and self._adaptive.is_trained
-                            else self._trainer.dict_id),
-            dict_version = dict_ver,
-            stats        = stats,
-            tags         = tags or {},
+            pulse_id=pulse_id,
+            parent_id=parent_id,
+            merkle_root=merkle_root,
+            chunk_hash=chunk_hash,
+            salt=vk.salt_hex,
+            nonce=nonce.hex(),
+            zstd_dict_id=(
+                self._adaptive.dict_id
+                if self._adaptive and self._adaptive.is_trained
+                else self._trainer.dict_id
+            ),
+            dict_version=dict_ver,
+            stats=stats,
+            tags=tags or {},
         )
         logger.success(
             "Sealed  id={}  {}→{}  ratio={:.2f}×  entropy={:.3f}  {:.1f} ms",
@@ -352,11 +368,11 @@ class QuantumEngine:
 
     async def unseal(self, blob: bytes, meta: PulseBlob) -> Any:
         """Verify → decrypt → decompress → deserialise."""
-        t0   = time.perf_counter()
+        t0 = time.perf_counter()
         loop = asyncio.get_running_loop()
 
         _ver, nonce = _unpack_header(blob)
-        ciphertext  = blob[HEADER_SIZE:]
+        ciphertext = blob[HEADER_SIZE:]
 
         # Pre-decryption integrity check
         actual_hash = hashlib.sha3_256(ciphertext).hexdigest()
@@ -367,9 +383,7 @@ class QuantumEngine:
             )
 
         # Re-derive key using stored salt
-        vk = await VaultKey.derive_async(
-            self._passphrase, bytes.fromhex(meta.salt)
-        )
+        vk = await VaultKey.derive_async(self._passphrase, bytes.fromhex(meta.salt))
 
         # Decrypt (AESGCM raises InvalidTag on auth failure)
         compressed: bytes = await loop.run_in_executor(
@@ -387,7 +401,8 @@ class QuantumEngine:
 
         logger.info(
             "Unsealed  id={}  {}  {:.1f} ms",
-            meta.pulse_id[:8], _sizeof_fmt(len(packed)),
+            meta.pulse_id[:8],
+            _sizeof_fmt(len(packed)),
             (time.perf_counter() - t0) * 1_000,
         )
         return payload
@@ -410,7 +425,7 @@ class QuantumEngine:
 
     async def bootstrap_dict(self, raw_samples: list[bytes]) -> None:
         """Train Zstd dict from corpus samples; also feeds the adaptive manager."""
-        n      = max(1, int(len(raw_samples) * ZSTD_DICT_SAMPLE_RATIO))
+        n = max(1, int(len(raw_samples) * ZSTD_DICT_SAMPLE_RATIO))
         subset = raw_samples[:n]
         # Feed adaptive manager (preferred path)
         if self._adaptive is not None:
@@ -418,8 +433,11 @@ class QuantumEngine:
                 self._adaptive._buffer.append(s)
             result = await self._adaptive.force_retrain(extra_samples=None)
             if result and result.committed:
-                logger.info("Adaptive dict bootstrapped  v{}  ratio={:.2f}×",
-                            result.new_version, result.new_ratio)
+                logger.info(
+                    "Adaptive dict bootstrapped  v{}  ratio={:.2f}×",
+                    result.new_version,
+                    result.new_ratio,
+                )
                 return
         # Fallback to legacy trainer
         await self._trainer.train_async(subset)
@@ -431,16 +449,16 @@ class QuantumEngine:
         sub_blobs: list[tuple[bytes, PulseBlob]],
     ) -> MasterPulse:
         """Build a Merkle-indexed MasterPulse from a list of (blob, meta) pairs."""
-        ciphertexts  = [b[HEADER_SIZE:] for b, _ in sub_blobs]
-        tree, root   = build_merkle_tree(ciphertexts)
-        total_bytes  = sum(m.stats.original_bytes for _, m in sub_blobs)
+        ciphertexts = [b[HEADER_SIZE:] for b, _ in sub_blobs]
+        tree, root = build_merkle_tree(ciphertexts)
+        total_bytes = sum(m.stats.original_bytes for _, m in sub_blobs)
         return MasterPulse(
-            master_id            = master_id,
-            shard_ids            = [m.pulse_id for _, m in sub_blobs],
-            merkle_tree          = tree,
-            merkle_root          = root,
-            total_original_bytes = total_bytes,
-            total_shards         = len(sub_blobs),
+            master_id=master_id,
+            shard_ids=[m.pulse_id for _, m in sub_blobs],
+            merkle_tree=tree,
+            merkle_root=root,
+            total_original_bytes=total_bytes,
+            total_shards=len(sub_blobs),
         )
 
     @staticmethod
