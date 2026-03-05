@@ -1571,6 +1571,14 @@ import os as _os
 _os.environ.setdefault("QUANTUM_PASSPHRASE", "test-passphrase-16c")
 _os.environ.setdefault("QUANTUM_API_KEYS", '["test-api-key-unit"]')
 
+# Canonical API key to use in tests — picks up whatever key is configured
+_TEST_API_KEY = _os.environ.get("QUANTUM_API_KEYS", '["test-api-key-unit"]')
+import json as _json
+try:
+    _TEST_API_KEY = _json.loads(_TEST_API_KEY)[0]
+except Exception:
+    _TEST_API_KEY = "test-api-key-unit"
+
 
 # ── Fix: auth tests that need settings available ───────────────────────────
 
@@ -1600,19 +1608,23 @@ class TestAuthFixed:
         assert auth_router is not None
 
     def test_issue_token_endpoint_valid(self):
+        from core.config import get_settings
+        get_settings.cache_clear()
         from fastapi import FastAPI
         from starlette.testclient import TestClient
         from core.auth import auth_router
         app = FastAPI()
         app.include_router(auth_router)
         resp = TestClient(app).post("/auth/token",
-                                    json={"api_key": "test-api-key-unit"})
+                                    json={"api_key": _TEST_API_KEY})
         assert resp.status_code == 200
         body = resp.json()
         assert "access_token" in body
         assert body["token_type"] == "bearer"
 
     def test_issue_token_endpoint_invalid(self):
+        from core.config import get_settings
+        get_settings.cache_clear()
         from fastapi import FastAPI
         from starlette.testclient import TestClient
         from core.auth import auth_router
@@ -1622,6 +1634,8 @@ class TestAuthFixed:
         assert resp.status_code == 403
 
     def test_require_api_key_valid(self):
+        from core.config import get_settings
+        get_settings.cache_clear()
         from fastapi import FastAPI
         from starlette.testclient import TestClient
         from core.auth import require_api_key
@@ -1630,7 +1644,7 @@ class TestAuthFixed:
         async def route(p=__import__('fastapi').Depends(require_api_key)):
             return {"identity": p.identity}
         resp = TestClient(app).get("/protected",
-                                   headers={"X-API-Key": "test-api-key-unit"})
+                                   headers={"X-API-Key": _TEST_API_KEY})
         assert resp.status_code == 200
 
     def test_require_api_key_missing(self):
