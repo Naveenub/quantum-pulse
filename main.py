@@ -66,28 +66,33 @@ from models.pulse_models import PulseBlob, ScanMode
 
 # ─────────────────────────────── config + rate limiter ───────────────────── #
 
-cfg     = get_settings()
+cfg = get_settings()
 limiter = Limiter(key_func=get_remote_address, enabled=cfg.rate_limit_enabled)
 
 # ─────────────────────────────── state ────────────────────────────────────── #
 
+
 class _State:
-    engine:      QuantumEngine
-    compressor:  PulseCompressor
-    vault:       QuantumVault
-    db:          PulseDB
+    engine: QuantumEngine
+    compressor: PulseCompressor
+    vault: QuantumVault
+    db: PulseDB
+
 
 state = _State()
 
 
 # ─────────────────────────────── shared helpers ───────────────────────────── #
 
+
 @with_retry()
 async def _load_blob(pulse_id: str) -> tuple[bytes, PulseBlob]:
     async with db_bulkhead:
         try:
             blob, meta = await mongo_circuit.call(state.db.load_pulse, pulse_id)
-            db_operations_total.labels(operation="load", backend="mongo" if state.db.is_mongo else "memory").inc()
+            db_operations_total.labels(
+                operation="load", backend="mongo" if state.db.is_mongo else "memory"
+            ).inc()
             return blob, meta
         except KeyError as err:
             raise HTTPException(404, f"Pulse {pulse_id!r} not found") from err
@@ -108,6 +113,7 @@ def _ip(request: Request) -> str:
 
 # ─────────────────────────────── lifespan ─────────────────────────────────── #
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     os.makedirs(cfg.log_dir, exist_ok=True)
@@ -119,17 +125,24 @@ async def lifespan(app: FastAPI):
     )
     logger.add(
         f"{cfg.log_dir}/quantum_pulse.log",
-        format=fmt, rotation=cfg.log_rotation, retention=cfg.log_retention,
-        compression="zip", level=cfg.log_level.value, enqueue=True,
+        format=fmt,
+        rotation=cfg.log_rotation,
+        retention=cfg.log_retention,
+        compression="zip",
+        level=cfg.log_level.value,
+        enqueue=True,
     )
     logger.add(lambda m: print(m, end=""), level=cfg.log_level.value, colorize=True)
     logger.info("━━━ QUANTUM-PULSE 1.0.0 ━━━  env={}", cfg.environment.value)
 
-    state.db         = PulseDB(cfg.mongo_uri, cfg.mongo_db)
-    state.engine     = QuantumEngine(passphrase=cfg.passphrase.get_secret_value(),
-                                      adaptive_dict=adaptive_dict)
+    state.db = PulseDB(cfg.mongo_uri, cfg.mongo_db)
+    state.engine = QuantumEngine(
+        passphrase=cfg.passphrase.get_secret_value(), adaptive_dict=adaptive_dict
+    )
     state.compressor = PulseCompressor(state.engine._trainer)
-    state.vault      = QuantumVault(passphrase=cfg.passphrase.get_secret_value(), cache_ttl=cfg.key_cache_ttl_s)
+    state.vault = QuantumVault(
+        passphrase=cfg.passphrase.get_secret_value(), cache_ttl=cfg.key_cache_ttl_s
+    )
 
     await state.db.connect()
     await state.vault.unlock()
@@ -137,7 +150,9 @@ async def lifespan(app: FastAPI):
     mount_manager.set_engine(state.engine)
 
     if cfg.scheduler_enabled:
-        scheduler.register_health_ping(lambda: state.engine, lambda: state.db, cfg.health_check_interval_s)
+        scheduler.register_health_ping(
+            lambda: state.engine, lambda: state.db, cfg.health_check_interval_s
+        )
         scheduler.register_ttl_cleanup(lambda: state.db, cfg.pulse_ttl_days)
         scheduler.register_metrics_snapshot(lambda: state.engine, lambda: state.db)
         scheduler.register_dict_retrain(lambda: state.engine, lambda: state.db)
@@ -156,13 +171,13 @@ async def lifespan(app: FastAPI):
 # ─────────────────────────────── app ──────────────────────────────────────── #
 
 app = FastAPI(
-    title       = "QUANTUM-PULSE",
-    description = "Extreme-density data vault engine for LLM training sets",
-    version     = "1.0.0",
-    lifespan    = lifespan,
-    docs_url    = "/docs"        if not cfg.is_production else None,
-    redoc_url   = "/redoc"       if not cfg.is_production else None,
-    openapi_url = "/openapi.json" if not cfg.is_production else None,
+    title="QUANTUM-PULSE",
+    description="Extreme-density data vault engine for LLM training sets",
+    version="1.0.0",
+    lifespan=lifespan,
+    docs_url="/docs" if not cfg.is_production else None,
+    redoc_url="/redoc" if not cfg.is_production else None,
+    openapi_url="/openapi.json" if not cfg.is_production else None,
 )
 
 app.state.limiter = limiter
@@ -177,42 +192,51 @@ app.include_router(create_interface_router(_load_blob))
 
 # ─────────────────────────────── models ───────────────────────────────────── #
 
+
 class SealRequest(BaseModel):
-    payload:   Any            = Field(...)
-    parent_id: str | None  = None
-    tags:      dict[str, str] = Field(default_factory=dict)
+    payload: Any = Field(...)
+    parent_id: str | None = None
+    tags: dict[str, str] = Field(default_factory=dict)
+
 
 class UnsealRequest(BaseModel):
     pulse_id: str
 
+
 class BootstrapRequest(BaseModel):
     samples: list[str] = Field(..., min_length=1)
 
+
 class MasterBuildRequest(BaseModel):
     master_id: str | None = None
-    pulse_ids: list[str]     = Field(..., min_length=1)
+    pulse_ids: list[str] = Field(..., min_length=1)
+
 
 class ScanRequest(BaseModel):
-    root_path:     str
-    mode:          ScanMode = ScanMode.RECURSIVE
-    hash_contents: bool     = True
-    max_depth:     int      = -1
-    skip_hidden:   bool     = True
+    root_path: str
+    mode: ScanMode = ScanMode.RECURSIVE
+    hash_contents: bool = True
+    max_depth: int = -1
+    skip_hidden: bool = True
+
 
 class RotateRequest(BaseModel):
     old_passphrase: str
 
+
 class ChangePassRequest(BaseModel):
     new_passphrase: str
-    confirm:        str
+    confirm: str
 
 
 # ─────────────────────────────── /health (legacy) ────────────────────────── #
 
+
 @app.get("/health", tags=["health"])
 async def health_legacy() -> dict:
     return {
-        "status": "ok", "timestamp": time.time(),
+        "status": "ok",
+        "timestamp": time.time(),
         "pulse_count": await state.db.count_pulses(),
         "engine": "Zstd-L22/AES-256-GCM/MsgPack",
         "dict_id": state.engine._trainer.dict_id,
@@ -227,13 +251,23 @@ _RL = f"{cfg.rate_limit_per_minute}/minute"
 
 @app.post("/pulse/seal", tags=["vault"])
 @limiter.limit(_RL)
-async def seal(request: Request, req: SealRequest, p: Principal = Depends(require_scope("write"))) -> dict:
+async def seal(
+    request: Request, req: SealRequest, p: Principal = Depends(require_scope("write"))
+) -> dict:
     pulse_id = str(uuid.uuid4())
     try:
         with track_seal(dict_trained=state.engine._trainer.is_trained):
-            blob, meta = await state.engine.seal(req.payload, pulse_id=pulse_id, parent_id=req.parent_id, tags=req.tags)
+            blob, meta = await state.engine.seal(
+                req.payload, pulse_id=pulse_id, parent_id=req.parent_id, tags=req.tags
+            )
     except Exception as exc:
-        await audit_logger.seal(pulse_id=pulse_id, identity=_identity(request), request_id=_req_id(request), ip=_ip(request), error=str(exc))
+        await audit_logger.seal(
+            pulse_id=pulse_id,
+            identity=_identity(request),
+            request_id=_req_id(request),
+            ip=_ip(request),
+            error=str(exc),
+        )
         raise HTTPException(500, str(exc)) from exc
 
     async with db_bulkhead:
@@ -244,77 +278,123 @@ async def seal(request: Request, req: SealRequest, p: Principal = Depends(requir
     pulse_bytes_encrypted.observe(meta.stats.encrypted_bytes)
     entropy_score.observe(meta.stats.entropy_bits_per_byte)
 
-    await audit_logger.seal(pulse_id=pulse_id, identity=_identity(request), request_id=_req_id(request),
-                             ip=_ip(request), ratio=meta.stats.ratio, size_bytes=meta.stats.encrypted_bytes)
+    await audit_logger.seal(
+        pulse_id=pulse_id,
+        identity=_identity(request),
+        request_id=_req_id(request),
+        ip=_ip(request),
+        ratio=meta.stats.ratio,
+        size_bytes=meta.stats.encrypted_bytes,
+    )
     return {"pulse_id": pulse_id, "meta": meta.model_dump(), "stored_in": backend}
 
 
 @app.post("/pulse/seal/file", tags=["vault"])
 @limiter.limit(_RL)
-async def seal_file(request: Request, file: UploadFile = File(...), p: Principal = Depends(require_scope("write"))) -> dict:
-    raw      = await file.read()
+async def seal_file(
+    request: Request, file: UploadFile = File(...), p: Principal = Depends(require_scope("write"))
+) -> dict:
+    raw = await file.read()
     pulse_id = str(uuid.uuid4())
-    payload  = {"filename": file.filename, "content_type": file.content_type, "data": list(raw)}
+    payload = {"filename": file.filename, "content_type": file.content_type, "data": list(raw)}
     try:
         with track_seal(dict_trained=state.engine._trainer.is_trained):
-            blob, meta = await state.engine.seal(payload, pulse_id=pulse_id, tags={"filename": file.filename or ""})
+            blob, meta = await state.engine.seal(
+                payload, pulse_id=pulse_id, tags={"filename": file.filename or ""}
+            )
     except Exception as exc:
         raise HTTPException(500, str(exc)) from exc
     async with db_bulkhead:
         backend = await state.db.save_pulse(pulse_id, blob, meta)
     compression_ratio.observe(meta.stats.ratio)
-    await audit_logger.seal(pulse_id=pulse_id, identity=_identity(request), request_id=_req_id(request),
-                             ip=_ip(request), ratio=meta.stats.ratio, size_bytes=len(raw))
+    await audit_logger.seal(
+        pulse_id=pulse_id,
+        identity=_identity(request),
+        request_id=_req_id(request),
+        ip=_ip(request),
+        ratio=meta.stats.ratio,
+        size_bytes=len(raw),
+    )
     return {"pulse_id": pulse_id, "meta": meta.model_dump(), "stored_in": backend}
 
 
 @app.post("/pulse/unseal", tags=["vault"])
 @limiter.limit(_RL)
-async def unseal(request: Request, req: UnsealRequest, p: Principal = Depends(require_scope("read"))) -> JSONResponse:
+async def unseal(
+    request: Request, req: UnsealRequest, p: Principal = Depends(require_scope("read"))
+) -> JSONResponse:
     blob, meta = await _load_blob(req.pulse_id)
     try:
         with track_unseal():
             payload = await state.engine.unseal(blob, meta)
     except Exception as exc:
-        await audit_logger.unseal(pulse_id=req.pulse_id, identity=_identity(request), request_id=_req_id(request),
-                                   ip=_ip(request), error=str(exc))
+        await audit_logger.unseal(
+            pulse_id=req.pulse_id,
+            identity=_identity(request),
+            request_id=_req_id(request),
+            ip=_ip(request),
+            error=str(exc),
+        )
         raise HTTPException(500, f"Decryption failed: {exc}") from exc
-    await audit_logger.unseal(pulse_id=req.pulse_id, identity=_identity(request), request_id=_req_id(request), ip=_ip(request))
+    await audit_logger.unseal(
+        pulse_id=req.pulse_id,
+        identity=_identity(request),
+        request_id=_req_id(request),
+        ip=_ip(request),
+    )
     return JSONResponse({"pulse_id": req.pulse_id, "payload": payload})
 
 
 @app.get("/pulse/stream/{pulse_id}", tags=["vault"])
-async def stream_pulse(pulse_id: str, request: Request,
-                       chunk_size: int = Query(65_536, ge=4_096, le=1_048_576),
-                       p: Principal = Depends(require_scope("read"))) -> StreamingResponse:
+async def stream_pulse(
+    pulse_id: str,
+    request: Request,
+    chunk_size: int = Query(65_536, ge=4_096, le=1_048_576),
+    p: Principal = Depends(require_scope("read")),
+) -> StreamingResponse:
     blob, meta = await _load_blob(pulse_id)
+
     async def _gen():
         with track_unseal():
             payload = await state.engine.unseal(blob, meta)
         packed = msgpack.packb(payload, use_bin_type=True)
         for i in range(0, len(packed), chunk_size):
             yield packed[i : i + chunk_size]
-    await audit_logger.unseal(pulse_id=pulse_id, identity=_identity(request), request_id=_req_id(request), ip=_ip(request))
-    return StreamingResponse(_gen(), media_type="application/x-msgpack",
-                              headers={"X-Pulse-ID": pulse_id})
+
+    await audit_logger.unseal(
+        pulse_id=pulse_id, identity=_identity(request), request_id=_req_id(request), ip=_ip(request)
+    )
+    return StreamingResponse(
+        _gen(), media_type="application/x-msgpack", headers={"X-Pulse-ID": pulse_id}
+    )
 
 
 @app.get("/pulse/list", tags=["vault"])
-async def list_pulses(parent_id: str | None = None, limit: int = Query(50, ge=1, le=1000),
-                      skip: int = Query(0, ge=0), p: Principal = Depends(require_scope("read"))) -> list[dict]:
+async def list_pulses(
+    parent_id: str | None = None,
+    limit: int = Query(50, ge=1, le=1000),
+    skip: int = Query(0, ge=0),
+    p: Principal = Depends(require_scope("read")),
+) -> list[dict]:
     return await state.db.list_pulses(parent_id=parent_id, limit=limit, skip=skip)
 
 
 @app.delete("/pulse/{pulse_id}", tags=["vault"])
-async def delete_pulse(pulse_id: str, request: Request, p: Principal = Depends(require_scope("admin"))) -> dict:
+async def delete_pulse(
+    pulse_id: str, request: Request, p: Principal = Depends(require_scope("admin"))
+) -> dict:
     if not await state.db.delete_pulse(pulse_id):
         raise HTTPException(404, f"Pulse {pulse_id!r} not found")
-    await audit_logger.delete(pulse_id=pulse_id, identity=_identity(request), request_id=_req_id(request))
+    await audit_logger.delete(
+        pulse_id=pulse_id, identity=_identity(request), request_id=_req_id(request)
+    )
     return {"deleted": pulse_id}
 
 
 @app.post("/pulse/bootstrap", tags=["ops"])
-async def bootstrap_dict(req: BootstrapRequest, p: Principal = Depends(require_scope("admin"))) -> dict:
+async def bootstrap_dict(
+    req: BootstrapRequest, p: Principal = Depends(require_scope("admin"))
+) -> dict:
     try:
         await state.engine.bootstrap_dict([s.encode() for s in req.samples])
     except Exception as exc:
@@ -324,7 +404,9 @@ async def bootstrap_dict(req: BootstrapRequest, p: Principal = Depends(require_s
 
 
 @app.post("/pulse/master", tags=["vault"])
-async def build_master(req: MasterBuildRequest, p: Principal = Depends(require_scope("write"))) -> dict:
+async def build_master(
+    req: MasterBuildRequest, p: Principal = Depends(require_scope("write"))
+) -> dict:
     master_id = req.master_id or str(uuid.uuid4())
     sub = [(await _load_blob(pid)) for pid in req.pulse_ids]
     master = QuantumEngine.build_master_pulse(master_id, sub)
@@ -343,10 +425,14 @@ async def get_master(master_id: str, p: Principal = Depends(require_scope("read"
 
 
 @app.post("/pulse/rotate/{pulse_id}", tags=["vault"])
-async def rotate_shard(pulse_id: str, req: RotateRequest, request: Request,
-                       p: Principal = Depends(require_scope("admin"))) -> dict:
+async def rotate_shard(
+    pulse_id: str,
+    req: RotateRequest,
+    request: Request,
+    p: Principal = Depends(require_scope("admin")),
+) -> dict:
     blob, meta = await _load_blob(pulse_id)
-    new_vk     = await state.vault.unlock()
+    new_vk = await state.vault.unlock()
     try:
         new_blob, new_meta = await state.vault.rotate_shard(blob, meta, req.old_passphrase, new_vk)
     except Exception as exc:
@@ -355,7 +441,9 @@ async def rotate_shard(pulse_id: str, req: RotateRequest, request: Request,
     async with db_bulkhead:
         await state.db.update_pulse(pulse_id, new_blob, new_meta)
     key_rotations_total.inc()
-    await audit_logger.rotate(pulse_id=pulse_id, identity=_identity(request), request_id=_req_id(request))
+    await audit_logger.rotate(
+        pulse_id=pulse_id, identity=_identity(request), request_id=_req_id(request)
+    )
     return {"rotated": pulse_id, "new_merkle": new_meta.merkle_root[:16] + "…"}
 
 
@@ -364,14 +452,14 @@ async def vault_info(p: Principal = Depends(require_scope("admin"))) -> dict:
     vk = await state.vault.unlock()
     adaptive_stats = state.engine._adaptive.stats() if state.engine._adaptive else None
     return {
-        "salt_prefix":     vk.salt_hex[:16] + "…",
-        "key_cache_size":  len(state.vault._cache),
-        "kdf":             "PBKDF2-SHA256",
-        "iterations":      cfg.kdf_iterations,
-        "key_bits":        256,
+        "salt_prefix": vk.salt_hex[:16] + "…",
+        "key_cache_size": len(state.vault._cache),
+        "kdf": "PBKDF2-SHA256",
+        "iterations": cfg.kdf_iterations,
+        "key_bits": 256,
         "circuit_breaker": mongo_circuit.status(),
-        "bulkhead":        db_bulkhead.status(),
-        "adaptive_dict":   adaptive_stats,
+        "bulkhead": db_bulkhead.status(),
+        "adaptive_dict": adaptive_stats,
     }
 
 
@@ -387,59 +475,75 @@ async def adaptive_dict_stats(p: Principal = Depends(require_scope("read"))) -> 
     stats = state.engine._adaptive.stats()
     versions = [
         {
-            "version":       dv.version,
-            "dict_id":       dv.dict_id,
-            "trained_at":    dv.trained_at,
-            "sample_count":  dv.sample_count,
+            "version": dv.version,
+            "dict_id": dv.dict_id,
+            "trained_at": dv.trained_at,
+            "sample_count": dv.sample_count,
             "baseline_ratio": round(dv.baseline_ratio, 3),
-            "size_kb":       round(len(dv.raw_bytes) / 1024, 1),
+            "size_kb": round(len(dv.raw_bytes) / 1024, 1),
         }
         for dv in state.engine._adaptive._versions
     ]
     return {
-        "enabled":             True,
-        "current_version":     stats["current_version"],
-        "dict_id":             stats["dict_id"],
-        "is_trained":          stats["is_trained"],
-        "total_seals":         stats["total_seals"],
+        "enabled": True,
+        "current_version": stats["current_version"],
+        "dict_id": stats["dict_id"],
+        "is_trained": stats["is_trained"],
+        "total_seals": stats["total_seals"],
         "seals_since_retrain": stats["seals_since_retrain"],
         "seals_until_retrain": stats["seals_until_retrain"],
-        "buffer_size":         stats["buffer_size"],
-        "latest_ratio":        stats["latest_ratio"],
-        "retrain_every_n":     stats["retrain_every_n"],
+        "buffer_size": stats["buffer_size"],
+        "latest_ratio": stats["latest_ratio"],
+        "retrain_every_n": stats["retrain_every_n"],
         "min_improvement_pct": stats["min_improvement_pct"],
-        "version_history":     versions,
+        "version_history": versions,
     }
 
 
 @app.post("/vault/passphrase", tags=["vault"])
-async def change_passphrase(req: ChangePassRequest, p: Principal = Depends(require_scope("admin"))) -> dict:
+async def change_passphrase(
+    req: ChangePassRequest, p: Principal = Depends(require_scope("admin"))
+) -> dict:
     await state.vault.change_passphrase(req.new_passphrase, req.confirm)
     return {"status": "passphrase_changed", "action_required": "rotate_all_shards"}
 
 
 @app.post("/benchmark", tags=["ops"])
-async def run_benchmark(req: BootstrapRequest, p: Principal = Depends(require_scope("admin"))) -> dict:
+async def run_benchmark(
+    req: BootstrapRequest, p: Principal = Depends(require_scope("admin"))
+) -> dict:
     report = await state.compressor.benchmark([s.encode() for s in req.samples])
-    return {"vanilla_ratio": round(report.vanilla_ratio, 3), "dict_ratio": round(report.dict_ratio, 3),
-            "improvement_pct": round(report.improvement_pct, 2)}
+    return {
+        "vanilla_ratio": round(report.vanilla_ratio, 3),
+        "dict_ratio": round(report.dict_ratio, 3),
+        "improvement_pct": round(report.improvement_pct, 2),
+    }
 
 
 @app.post("/scan", tags=["pipeline"])
 async def scan_and_seal(req: ScanRequest, p: Principal = Depends(require_scope("write"))) -> dict:
     if not os.path.isdir(req.root_path):
         raise HTTPException(400, f"Not a directory: {req.root_path!r}")
-    scanner   = QuantumScanner(req.root_path, mode=req.mode, max_depth=req.max_depth,
-                                skip_hidden=req.skip_hidden, hash_contents=req.hash_contents)
+    scanner = QuantumScanner(
+        req.root_path,
+        mode=req.mode,
+        max_depth=req.max_depth,
+        skip_hidden=req.skip_hidden,
+        hash_contents=req.hash_contents,
+    )
     master_id = str(uuid.uuid4())
-    pairs:    list[tuple[bytes, PulseBlob]] = []
-    t0        = time.perf_counter()
+    pairs: list[tuple[bytes, PulseBlob]] = []
+    t0 = time.perf_counter()
     if samples := await scanner.scan_samples(limit=200):
         await state.engine.bootstrap_dict(samples)
     async for manifest in scanner.scan():
         pid = str(uuid.uuid4())
-        blob, meta = await state.engine.seal(manifest.model_dump(), pulse_id=pid, parent_id=master_id,
-                                              tags={"root": manifest.root_path})
+        blob, meta = await state.engine.seal(
+            manifest.model_dump(),
+            pulse_id=pid,
+            parent_id=master_id,
+            tags={"root": manifest.root_path},
+        )
         async with db_bulkhead:
             await state.db.save_pulse(pid, blob, meta)
         pairs.append((blob, meta))
@@ -450,14 +554,22 @@ async def scan_and_seal(req: ScanRequest, p: Principal = Depends(require_scope("
     elapsed_ms = (time.perf_counter() - t0) * 1_000
     scan_duration_ms.observe(elapsed_ms)
     scan_files_total.inc(scanner.stats.total_files)
-    return {"master_id": master_id, "shards": master.total_shards,
-            "total_bytes": master.total_original_bytes, "merkle_root": master.merkle_root,
-            "scan_stats": scanner.stats.model_dump(), "elapsed_ms": round(elapsed_ms, 1)}
+    return {
+        "master_id": master_id,
+        "shards": master.total_shards,
+        "total_bytes": master.total_original_bytes,
+        "merkle_root": master.merkle_root,
+        "scan_stats": scanner.stats.model_dump(),
+        "elapsed_ms": round(elapsed_ms, 1),
+    }
 
 
 @app.get("/audit/recent", tags=["ops"])
-async def recent_audit(limit: int = Query(50, ge=1, le=500), event_type: str | None = None,
-                       p: Principal = Depends(require_scope("admin"))) -> list[dict]:
+async def recent_audit(
+    limit: int = Query(50, ge=1, le=500),
+    event_type: str | None = None,
+    p: Principal = Depends(require_scope("admin")),
+) -> list[dict]:
     return await audit_logger.query_recent(limit=limit, event_type=event_type)
 
 
@@ -470,8 +582,13 @@ async def list_jobs(p: Principal = Depends(require_scope("admin"))) -> list[dict
 
 if __name__ == "__main__":
     uvicorn.run(
-        "main:app", host=cfg.host, port=cfg.port,
+        "main:app",
+        host=cfg.host,
+        port=cfg.port,
         log_level=cfg.log_level.value.lower(),
-        loop="uvloop", http="httptools",
-        workers=cfg.workers, reload=cfg.reload, access_log=False,
+        loop="uvloop",
+        http="httptools",
+        workers=cfg.workers,
+        reload=cfg.reload,
+        access_log=False,
     )
