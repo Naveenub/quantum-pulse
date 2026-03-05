@@ -3,7 +3,7 @@
 > **Extreme-density encrypted data vault for LLM training pipelines.**  
 > MsgPack + Zstd-L22 + corpus dictionary + AES-256-GCM + SHA3-256 Merkle trees + REST API
 
-[![CI](https://github.com/YOUR_USERNAME/quantum-pulse/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/quantum-pulse/actions)
+[![CI](https://github.com/Naveenub/quantum-pulse/actions/workflows/ci.yml/badge.svg)](https://github.com/Naveenub/quantum-pulse/actions)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-54%20passing-brightgreen.svg)](#testing)
