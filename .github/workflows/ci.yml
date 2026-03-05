@@ -41,7 +41,7 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Run unit tests
         run: |
-          pytest tests/test_engine.py -v --asyncio-mode=auto \
+          pytest tests/test_engine.py tests/test_units.py -v --asyncio-mode=auto \
             --cov=core --cov=models --cov-report=xml
       - uses: codecov/codecov-action@v4
         with:
