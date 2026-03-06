@@ -26,6 +26,31 @@ Those tools only compress. QUANTUM-PULSE also:
 
 ---
 
+## Why Open Source
+
+Cryptographic tools earn trust through scrutiny, not marketing.
+
+QUANTUM-PULSE is open source because:
+
+1. **Crypto needs public review** — before anyone puts real training data through this pipeline, the implementation should be auditable. Security through obscurity is not security.
+2. **Community builds better benchmarks** — ML engineers working with real datasets will find edge cases no synthetic corpus can simulate. Submit yours to [`benchmarks/community/`](benchmarks/community/).
+3. **Adoption precedes monetization** — if this solves a real problem at scale, a hosted version becomes a natural next step. Demand should be proven, not assumed.
+
+---
+
+## ☁️ Hosted Version — Coming Soon
+
+Self-hosting a secure vault means managing keys, uptime, and backups yourself. A managed version of QUANTUM-PULSE is in planning:
+
+- **Zero-ops** — no MongoDB to run, no passphrase rotation to script
+- **Metered billing** — pay per GiB sealed, not per seat
+- **Compliance-ready** — audit log export, key rotation SLA, SOC 2 roadmap
+- **Same open protocol** — data sealed via the API can always be unsealed with the self-hosted version; no lock-in
+
+> **Interested in early access?** Open a [GitHub Discussion](../../discussions) or star the repo to signal demand.
+
+---
+
 ## Benchmark — 1000 LLM Training Records (1.2 MiB corpus)
 
 ```
@@ -281,16 +306,27 @@ All contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 - Real-world dataset benchmarks → submit to [`benchmarks/community/`](benchmarks/community/)
 - Streaming seal/unseal for files > 2 GB
 - Language bindings (Rust, Go, Node.js client)
+- **Security review** — crypto implementation audit, fuzzing, side-channel analysis
 
 ---
 
 ## Roadmap
 
-- [ ] S3 / GCS storage backend  
-- [ ] Streaming seal for files > 2 GB  
-- [ ] OpenTelemetry tracing  
-- [ ] Benchmark vs Apache Parquet + snappy  
-- [ ] WASM build for browser-side sealing  
+**Open Source**
+- [ ] S3 / GCS storage backend
+- [ ] Streaming seal for files > 2 GB
+- [ ] OpenTelemetry tracing
+- [ ] Benchmark vs Apache Parquet + snappy
+- [ ] WASM build for browser-side sealing
+- [ ] Rust client SDK
+- [ ] Key rotation without re-sealing (re-wrap mode)
+
+**Hosted (quantum-pulse.cloud)**
+- [ ] Managed API with metered billing (per GiB sealed)
+- [ ] Web dashboard — browse, search, audit pulses
+- [ ] Team workspaces + role-based access
+- [ ] Webhook on seal/unseal events
+- [ ] SOC 2 Type II audit
 
 ---
 
