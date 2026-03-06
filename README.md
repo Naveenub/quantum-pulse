@@ -10,6 +10,18 @@
 
 ---
 
+## Demo
+
+<div align="center">
+
+![QUANTUM-PULSE demo](assets/quantum_pulse_preview.gif)
+
+▶ [Full 18s promo video](assets/quantum_pulse_promo.mp4) &nbsp;·&nbsp; [⭐ Star on GitHub](https://github.com/Naveenub/quantum-pulse)
+
+</div>
+
+---
+
 ## What Is It?
 
 QUANTUM-PULSE is an open-source **compress-then-encrypt vault** built specifically for LLM training data. Every blob is compressed with a cross-corpus Zstd dictionary, encrypted with AES-256-GCM, integrity-verified with a SHA3-256 Merkle tree, and stored in MongoDB — all through a single REST API call.
