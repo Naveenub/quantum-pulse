@@ -14,9 +14,11 @@
 
 <div align="center">
 
-![QUANTUM-PULSE demo](assets/quantum_pulse_preview.gif)
+![QUANTUM-PULSE demo — seal & unseal live](assets/quantum_pulse_demo.gif)
 
-▶ [Full 18s promo video](assets/quantum_pulse_promo.mp4) &nbsp;·&nbsp; [⭐ Star on GitHub](https://github.com/Naveenub/quantum-pulse)
+▶ [Full 26s demo video](assets/quantum_pulse_promo.mp4) &nbsp;·&nbsp; [⭐ Star on GitHub](https://github.com/Naveenub/quantum-pulse)
+
+**`docker-compose up -d`  →  `qp seal dataset.json`  →  39× compression + AES-256-GCM in 143ms**
 
 </div>
 
