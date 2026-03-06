@@ -14,7 +14,7 @@
 Go to **Security → Report a vulnerability** in this repository.
 
 ### Option B — Email
-Email the maintainers directly with:
+Send a **private** email to: **security@quantum-pulse.dev** (or open a GitHub private report if that address bounces) with:
 - Description of the vulnerability
 - Steps to reproduce
 - Impact assessment

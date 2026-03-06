@@ -46,7 +46,7 @@ Open an Issue with the `enhancement` label. Describe:
 5. Open a PR against `main` — describe what changed and why
 
 **PR checklist:**
-- [ ] All 54 tests pass (`make test`)
+- [ ] All 277 tests pass (`make test`)
 - [ ] No new lint errors (`make lint`)
 - [ ] New behaviour is tested
 - [ ] BENCHMARKS.md updated if performance changed
@@ -67,6 +67,7 @@ note with your corpus type and hardware specs.
 
 ```
 core/
+  adaptive.py     # AdaptiveDictManager — self-improving dict, A/B versioning
   config.py       # Pydantic Settings — all configuration
   engine.py       # Compression + encryption pipeline (central)
   vault.py        # Key derivation, rotation, HKDF
@@ -88,6 +89,7 @@ models/
 tests/
   test_engine.py  # 27 unit tests (core pipeline)
   test_api.py     # 27 integration tests (HTTP layer)
+  test_units.py   # 223 unit tests (auth, middleware, vault, scheduler, …)
 
 scripts/
   benchmark_compare.py  # Head-to-head vs competitors

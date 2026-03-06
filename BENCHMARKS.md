@@ -1,3 +1,4 @@
+<!-- Last updated: 2026-03-06 · Python 3.12 -->
 # QUANTUM-PULSE Benchmarks
 
 Reproducible benchmarks comparing QUANTUM-PULSE against every major compression algorithm
@@ -17,21 +18,21 @@ python scripts/benchmark_compare.py --records 1000   # larger corpus
 ────────────────────────────────────────────────────────────────────
 Algorithm              Ratio      vs gzip     Time      Enc   Int
 ────────────────────────────────────────────────────────────────────
-snappy                 12.03×      −80.9%      0.7 ms    ✗     ✗
+snappy                 12.03×      −80.9%      1.3 ms    ✗     ✗
 lz4                    33.80×      −46.2%      0.4 ms    ✗     ✗
-gzip-9                 62.86×      baseline    9.1 ms    ✗     ✗
-zstd-L3                76.19×      +21.2%      0.7 ms    ✗     ✗
-QUANTUM-PULSE ◀        95.51×      +51.9%    553.4 ms    ✓     ✓
-zstd-L22+MsgPack       96.60×      +53.7%   1173.4 ms    ✗     ✗
-zstd-L22               99.58×      +58.4%   1644.3 ms    ✗     ✗
-brotli-11             112.95×      +79.7%   1354.2 ms    ✗     ✗
+gzip-9                 62.86×      baseline    9.9 ms    ✗     ✗
+zstd-L3                76.19×      +21.2%      1.6 ms    ✗     ✗
+QUANTUM-PULSE ◀        95.51×      +51.9%    590.4 ms    ✓     ✓
+zstd-L22+MsgPack       96.60×      +53.7%   1235.5 ms    ✗     ✗
+zstd-L22               99.58×      +58.4%   1745.6 ms    ✗     ✗
+brotli-11             112.95×      +79.7%   1441.5 ms    ✗     ✗
 ────────────────────────────────────────────────────────────────────
 Enc = AES-256-GCM encryption     Int = SHA3-256 Merkle integrity
 ```
 
 **Honest findings:**
 
-- **QUANTUM-PULSE is the fastest high-compression pipeline that also encrypts and verifies data** — 553 ms vs 1173 ms (zstd+msgpack), 1354 ms (brotli-11), 1644 ms (zstd-L22).
+- **QUANTUM-PULSE is the fastest high-compression pipeline that also encrypts and verifies data** — 590 ms vs 1235 ms (zstd+msgpack), 1441 ms (brotli-11), 1745 ms (zstd-L22).
 - **Brotli-11 achieves the highest raw compression ratio** (112× vs 95×) but is 2.4× slower and provides no encryption or integrity guarantees.
 - **QUANTUM-PULSE is 3× faster than vanilla zstd-L22** at a comparable ratio, because the pre-trained corpus dictionary skips per-shard pattern discovery.
 - **Every other algorithm in this table offers zero security.** QUANTUM-PULSE is the only option if you need compression + encryption + tamper detection in one pipeline.

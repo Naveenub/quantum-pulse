@@ -23,6 +23,12 @@ install:  ## Install production dependencies
 dev-install:  ## Install dev + test dependencies
 	$(PIP) install -r requirements.txt pytest pytest-asyncio httpx mypy ruff pre-commit pytest-cov
 
+pre-commit-install:  ## Install pre-commit hooks
+	pre-commit install
+
+pre-commit:  ## Run pre-commit on all files
+	pre-commit run --all-files
+
 ## ── Testing ───────────────────────────────────────────────────────────────── ##
 
 test:  ## Run full test suite (unit + API)
@@ -36,6 +42,10 @@ test-unit:  ## Run unit tests only
 test-api:  ## Run API integration tests only
 	QUANTUM_PASSPHRASE="$(PASSPHRASE)" QUANTUM_API_KEYS="test-key" \
 	$(PYTHON) -m pytest tests/test_api.py -v --asyncio-mode=auto
+
+test-units:  ## Run extended unit tests only
+	QUANTUM_PASSPHRASE="$(PASSPHRASE)" QUANTUM_API_KEYS="test-key" \
+	$(PYTHON) -m pytest tests/test_units.py -v --asyncio-mode=auto
 
 test-cov:  ## Run tests with coverage report
 	QUANTUM_PASSPHRASE="$(PASSPHRASE)" QUANTUM_API_KEYS="test-key" \
