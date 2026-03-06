@@ -91,6 +91,7 @@ jobs:
           docker run -d \
             -e QUANTUM_PASSPHRASE="${{ env.QUANTUM_PASSPHRASE }}" \
             -e QUANTUM_ENVIRONMENT=development \
+            -e QUANTUM_HOST=0.0.0.0 \
             -p 8747:8747 \
             --name qp-test \
             quantum-pulse:${{ github.sha }}
