@@ -1,0 +1,16 @@
+# CODEOWNERS — reviewers automatically requested on PRs touching these paths.
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything
+*                          @Naveenub
+
+# Crypto-critical files — must be reviewed by maintainer
+core/engine.py             @Naveenub
+core/vault.py              @Naveenub
+core/auth.py               @Naveenub
+
+# CI/CD pipeline changes
+.github/workflows/         @Naveenub
+
+# Security policy
+SECURITY.md                @Naveenub

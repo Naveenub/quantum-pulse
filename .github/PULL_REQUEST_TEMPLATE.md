@@ -18,7 +18,7 @@ make test
 
 ## Checklist
 
-- [ ] All 54 tests pass (`make test`)
+- [ ] All 277 tests pass (`make test`)
 - [ ] No new lint errors (`make lint`)
 - [ ] New code has tests
 - [ ] BENCHMARKS.md updated if performance changed
