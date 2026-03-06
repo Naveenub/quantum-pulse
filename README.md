@@ -190,7 +190,8 @@ quantum-pulse/
 │   └── gen_corpus.py                   # reproducible LLM training corpus generator
 └── tests/
     ├── test_api.py                     # 27 FastAPI integration tests (full HTTP stack)
-    └── test_engine.py                  # 27 unit tests (core compression/crypto pipeline)
+    ├── test_engine.py                  # 27 unit tests (core compression/crypto pipeline)
+    └── test_units.py                   # 223 unit tests (auth, middleware, vault, scheduler, …)
 ```
 
 ---
@@ -216,7 +217,7 @@ quantum-pulse/
 - `qp` CLI with 12 commands
 
 **Developer Experience**
-- 54 tests (27 unit + 27 API integration)
+- 277 tests (223 unit · 27 engine · 27 API integration)
 - `make test`, `make bench`, `make lint`, `make docker-up`
 - GitHub Actions CI out of the box
 
