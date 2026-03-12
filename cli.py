@@ -113,9 +113,13 @@ def seal(
     file_path: str = typer.Argument(..., help="File to seal"),
     passphrase: str = typer.Option("", "--passphrase", "-p"),
     tag: list[str] | None = typer.Option(None, "--tag", "-t", help="key=value tags"),
-    output: str | None = typer.Option(None, "--output", "-o", help="Write pulse ID to file"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Write pulse ID or .qp blob to file"),
+    offline: bool = typer.Option(False, "--offline", help="Seal without MongoDB — saves blob to <file>.qp"),
 ) -> None:
-    """Seal a file into the vault (in-process, no server required)."""
+    """Seal a file into the vault (in-process, no server required).
+
+    With --offline: no MongoDB needed. Blob saved to <file>.qp for later unsealing.
+    """
     if not passphrase:
         passphrase = _passphrase_prompt()
 
@@ -128,10 +132,10 @@ def seal(
     tags["filename"] = path.name
 
     async def _run():
-        engine = _get_engine(passphrase)
-        db = _get_db(passphrase)
-        await db.connect()
+        import base64
+        import msgpack as _mp
 
+        engine = _get_engine(passphrase)
         raw = path.read_bytes()
         payload = {"filename": path.name, "data": list(raw)}
         pulse_id = str(uuid.uuid4())
@@ -139,21 +143,41 @@ def seal(
         with Progress(SpinnerColumn(), TextColumn("{task.description}"), console=console) as prog:
             t = prog.add_task("Sealing …", total=None)
             blob, meta = await engine.seal(payload, pulse_id=pulse_id, tags=tags)
-            prog.update(t, description="Saving …")
-            backend = await db.save_pulse(pulse_id, blob, meta)
 
-        console.print(
-            Panel(
-                f"[bold cyan]{pulse_id}[/bold cyan]\n"
-                f"Ratio: [green]{meta.stats.ratio:.2f}×[/green]  "
-                f"Backend: {backend}  "
-                f"Size: {meta.stats.encrypted_bytes:,} B",
-                title="✅ Sealed",
-            )
-        )
-
-        if output:
-            Path(output).write_text(pulse_id)
+            if offline:
+                out_path = Path(output) if output else path.with_suffix(".qp")
+                packed = _mp.packb({
+                    "pulse_id": pulse_id,
+                    "blob": base64.b64encode(blob).decode(),
+                    "meta": meta.model_dump_json(),
+                }, use_bin_type=True)
+                out_path.write_bytes(packed)
+                prog.update(t, description="Saved offline")
+                console.print(
+                    Panel(
+                        f"[bold cyan]{pulse_id}[/bold cyan]\n"
+                        f"Ratio: [green]{meta.stats.ratio:.2f}×[/green]  "
+                        f"Saved: {out_path}  "
+                        f"Size: {meta.stats.encrypted_bytes:,} B",
+                        title="✅ Sealed (offline)",
+                    )
+                )
+            else:
+                db = _get_db(passphrase)
+                await db.connect()
+                prog.update(t, description="Saving to MongoDB …")
+                backend = await db.save_pulse(pulse_id, blob, meta)
+                console.print(
+                    Panel(
+                        f"[bold cyan]{pulse_id}[/bold cyan]\n"
+                        f"Ratio: [green]{meta.stats.ratio:.2f}×[/green]  "
+                        f"Backend: {backend}  "
+                        f"Size: {meta.stats.encrypted_bytes:,} B",
+                        title="✅ Sealed",
+                    )
+                )
+                if output:
+                    Path(output).write_text(pulse_id)
 
     asyncio.run(_run())
 

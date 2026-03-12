@@ -1,6 +1,12 @@
 [build-system]
-requires      = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
+requires      = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["cli"]
+
+[tool.setuptools.packages.find]
+include = ["core*", "models*"]
 
 [project]
 name        = "quantum-pulse"
@@ -9,13 +15,6 @@ description = "Extreme-density data vault engine for LLM training sets"
 readme      = "README.md"
 requires-python = ">=3.12"
 license     = { text = "MIT" }
-authors     = [{ name = "Naveenub", url = "https://github.com/Naveenub" }]
-
-[project.urls]
-Homepage      = "https://github.com/Naveenub/quantum-pulse"
-Repository    = "https://github.com/Naveenub/quantum-pulse"
-Documentation = "https://github.com/Naveenub/quantum-pulse#readme"
-"Bug Tracker" = "https://github.com/Naveenub/quantum-pulse/issues"
 
 keywords = ["compression", "encryption", "vault", "llm", "zstd", "aes"]
 
@@ -108,4 +107,4 @@ omit     = ["*/tests/*", "*/__pycache__/*"]
 [tool.coverage.report]
 show_missing = true
 skip_covered = false
-fail_under   = 60
+fail_under   = 75
