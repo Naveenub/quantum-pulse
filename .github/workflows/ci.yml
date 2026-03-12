@@ -61,7 +61,7 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Run API tests
         run: |
-          pytest tests/test_api.py -v --asyncio-mode=auto
+          pytest tests/test_api.py -v --asyncio-mode=auto --no-cov
 
   # ── Benchmark (non-blocking) ────────────────────────────────────────────── #
   benchmark:
@@ -91,7 +91,6 @@ jobs:
           docker run -d \
             -e QUANTUM_PASSPHRASE="${{ env.QUANTUM_PASSPHRASE }}" \
             -e QUANTUM_ENVIRONMENT=development \
-            -e QUANTUM_HOST=0.0.0.0 \
             -p 8747:8747 \
             --name qp-test \
             quantum-pulse:${{ github.sha }}
