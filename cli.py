@@ -25,11 +25,13 @@ or can be used in --offline mode which runs the engine in-process.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import sys
 import uuid
 from pathlib import Path
 
+import msgpack as _mp
 import typer
 from rich.console import Console
 from rich.panel import Panel
@@ -132,9 +134,6 @@ def seal(
     tags["filename"] = path.name
 
     async def _run():
-        import base64
-        import msgpack as _mp
-
         engine = _get_engine(passphrase)
         raw = path.read_bytes()
         payload = {"filename": path.name, "data": list(raw)}
