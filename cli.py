@@ -115,8 +115,12 @@ def seal(
     file_path: str = typer.Argument(..., help="File to seal"),
     passphrase: str = typer.Option("", "--passphrase", "-p"),
     tag: list[str] | None = typer.Option(None, "--tag", "-t", help="key=value tags"),
-    output: str | None = typer.Option(None, "--output", "-o", help="Write pulse ID or .qp blob to file"),
-    offline: bool = typer.Option(False, "--offline", help="Seal without MongoDB — saves blob to <file>.qp"),
+    output: str | None = typer.Option(
+        None, "--output", "-o", help="Write pulse ID or .qp blob to file"
+    ),
+    offline: bool = typer.Option(
+        False, "--offline", help="Seal without MongoDB — saves blob to <file>.qp"
+    ),
 ) -> None:
     """Seal a file into the vault (in-process, no server required).
 
@@ -145,11 +149,14 @@ def seal(
 
             if offline:
                 out_path = Path(output) if output else path.with_suffix(".qp")
-                packed = _mp.packb({
-                    "pulse_id": pulse_id,
-                    "blob": base64.b64encode(blob).decode(),
-                    "meta": meta.model_dump_json(),
-                }, use_bin_type=True)
+                packed = _mp.packb(
+                    {
+                        "pulse_id": pulse_id,
+                        "blob": base64.b64encode(blob).decode(),
+                        "meta": meta.model_dump_json(),
+                    },
+                    use_bin_type=True,
+                )
                 out_path.write_bytes(packed)
                 prog.update(t, description="Saved offline")
                 console.print(
