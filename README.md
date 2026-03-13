@@ -4,9 +4,11 @@
 > MsgPack + Zstd-L22 + corpus dictionary + AES-256-GCM + SHA3-256 Merkle trees + REST API
 
 [![CI](https://github.com/Naveenub/quantum-pulse/actions/workflows/ci.yml/badge.svg)](https://github.com/Naveenub/quantum-pulse/actions)
+[![PyPI version](https://badge.fury.io/py/quantum-pulse.svg)](https://pypi.org/project/quantum-pulse/)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-54%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-277%20passing-brightgreen.svg)](#testing)
+[![Coverage](https://img.shields.io/badge/coverage-81%25-brightgreen.svg)](#testing)
 
 ---
 
@@ -18,15 +20,32 @@
 
 ▶ [Full 26s demo video](assets/quantum_pulse_promo.mp4) &nbsp;·&nbsp; [⭐ Star on GitHub](https://github.com/Naveenub/quantum-pulse)
 
-**`docker-compose up -d`  →  `qp seal dataset.json`  →  39× compression + AES-256-GCM in 143ms**
+**`pip install quantum-pulse`  →  `qp seal dataset.json --offline`  →  39× compression + AES-256-GCM**
 
 </div>
 
 ---
 
+## Install
+
+```bash
+pip install quantum-pulse
+```
+
+Or clone for the full server + Docker setup:
+
+```bash
+git clone https://github.com/Naveenub/quantum-pulse.git
+cd quantum-pulse
+cp .env.example .env
+docker-compose up -d
+```
+
+---
+
 ## What Is It?
 
-QUANTUM-PULSE is an open-source **compress-then-encrypt vault** built specifically for LLM training data. Every blob is compressed with a cross-corpus Zstd dictionary, encrypted with AES-256-GCM, integrity-verified with a SHA3-256 Merkle tree, and stored in MongoDB — all through a single REST API call.
+QUANTUM-PULSE is an open-source **compress-then-encrypt vault** built specifically for LLM training data. Every blob is compressed with a cross-corpus Zstd dictionary, encrypted with AES-256-GCM, integrity-verified with a SHA3-256 Merkle tree, and stored in MongoDB — all through a single API call or CLI command.
 
 ### Why not just use gzip / brotli / zstd?
 
@@ -83,8 +102,6 @@ brotli-11             112.95×      +79.7%   1354.2 ms    ✗     ✗
 Enc = AES-256-GCM encryption     Int = SHA3-256 Merkle integrity
 ```
 
-**Honest summary:**
-
 | Claim | Evidence |
 |-------|----------|
 | Fastest high-compression pipeline *with security* | 553 ms vs 1173 ms (zstd+mp), 1354 ms (brotli), 1644 ms (zstd-L22) |
@@ -97,52 +114,62 @@ Full details: [BENCHMARKS.md](BENCHMARKS.md)
 
 ---
 
-
 ## Quick Start
 
+### Offline — no server, no Docker
+
 ```bash
-# 1. Clone and install
+pip install quantum-pulse
+
+# Generate a strong passphrase
+qp keygen
+
+# Seal a file
+qp seal dataset.json --passphrase "yourpassphrase16+" --offline
+# → dataset.qp  (AES-256-GCM encrypted · SHA3-256 Merkle signed)
+
+# Recover it — byte-perfect
+qp unseal dataset.qp --passphrase "yourpassphrase16+" --offline --output recovered.json
+
+# Benchmark
+qp benchmark --passphrase "yourpassphrase16+"
+```
+
+### Full server mode — REST API + MongoDB
+
+```bash
 git clone https://github.com/Naveenub/quantum-pulse.git
 cd quantum-pulse
-pip install -r requirements.txt
+cp .env.example .env          # set QUANTUM_PASSPHRASE and QUANTUM_API_KEYS
+docker-compose up -d
 
-# 2. Set your passphrase (min 16 chars)
-export QUANTUM_PASSPHRASE="my-strong-passphrase-here"
-export QUANTUM_API_KEYS='["my-api-key"]'
-
-# 3. Start (no MongoDB needed — uses in-memory storage by default)
-uvicorn main:app --port 8747
-
-# 4. Seal your first blob
+# Seal via API
 curl -X POST http://localhost:8747/pulse/seal \
   -H "X-API-Key: my-api-key" \
   -H "Content-Type: application/json" \
   -d '{"payload": {"text": "hello world", "tokens": [1,2,3]}}'
 
-# 5. Unseal it
-curl -X POST http://localhost:8747/pulse/unseal \
-  -H "X-API-Key: my-api-key" \
-  -H "Content-Type: application/json" \
-  -d '{"pulse_id": "<id from step 4>"}'
+# Seal via CLI
+qp seal dataset.json --tag version=v1
+qp unseal <pulse-id>
 ```
 
-**Or via the CLI:**
+### All CLI commands
 
 ```bash
-qp keygen                          # generate strong passphrase
-qp seal dataset.json --tag v1      # seal a file
-qp list                            # list all pulses
-qp unseal <pulse-id>               # decrypt to stdout
-qp health                          # check server status
-```
-
----
-
-## Docker (One Command)
-
-```bash
-docker-compose up -d
-curl http://localhost:8747/healthz
+qp keygen                                              # generate strong passphrase
+qp seal dataset.json --tag v1                          # seal (needs MongoDB)
+qp seal dataset.json --passphrase "p16+" --offline     # seal offline → dataset.qp
+qp unseal dataset.qp --passphrase "p16+" --offline     # recover offline ← byte-perfect
+qp unseal <pulse-id>                                   # decrypt from MongoDB to stdout
+qp list                                                # list stored pulses
+qp info <pulse-id>                                     # pulse metadata
+qp rotate <pulse-id>                                   # re-encrypt under new passphrase
+qp scan ./data/                                        # seal entire directory tree
+qp master <id1> <id2> ...                              # build cross-shard MasterPulse
+qp benchmark --passphrase "p16+"                       # run seal benchmark
+qp health                                              # query server health
+qp config                                              # print redacted config
 ```
 
 ---
@@ -179,58 +206,65 @@ dict → MsgPack → Zstd-L22+corpus-dict → AES-256-GCM → SHA3-256 Merkle
 
 ```
 quantum-pulse/
-├── .env.example                        # all environment variables with defaults
-├── .github/
-│   ├── ISSUE_TEMPLATE/
-│   │   ├── benchmark.md                # community benchmark submission template
-│   │   ├── bug_report.md               # structured bug report template
-│   │   └── feature_request.md          # feature proposal template
-│   ├── PULL_REQUEST_TEMPLATE.md        # PR checklist
-│   └── workflows/
-│       └── ci.yml                      # GitHub Actions: lint → test → bench → docker
-├── .gitignore
-├── BENCHMARKS.md                       # full benchmark results vs gzip/lz4/brotli/zstd
-├── CODE_OF_CONDUCT.md
-├── CONTRIBUTING.md                     # contribution guide, design principles, structure
-├── Dockerfile
-├── LICENSE                             # MIT
-├── Makefile                            # make test / bench / lint / docker-up / run
-├── README.md
-├── SECURITY.md                         # responsible disclosure policy
+├── assets/
+│   ├── quantum_pulse_demo.gif            # animated demo — seal & unseal live
+│   └── quantum_pulse_promo.mp4           # full 26s promo video
 ├── benchmarks/
-│   └── community/                      # submit your benchmark results here
+│   └── community/                        # submit your real-world benchmark results here
 │       └── README.md
-├── cli.py                              # qp CLI (seal / unseal / scan / rotate / health …)
 ├── core/
-│   ├── adaptive.py                     # AdaptiveDictManager — self-improving dict, A/B versioning
-│   ├── audit.py                        # append-only audit log (JSONL + MongoDB)
-│   ├── auth.py                         # API key + JWT authentication, scope-based access
-│   ├── compression.py                  # PulseCompressor — async Zstd wrapper + streaming
-│   ├── config.py                       # Pydantic Settings V2 — all config, secrets, validation
-│   ├── db.py                           # MongoDB / in-memory storage backend
-│   ├── engine.py                       # QuantumEngine — MsgPack→Zstd→AES-GCM→Merkle pipeline
-│   ├── health.py                       # liveness / readiness / startup probes
-│   ├── interface.py                    # virtual mount filesystem (FUSE-like)
-│   ├── metrics.py                      # Prometheus counters, histograms, gauges
-│   ├── middleware.py                   # HTTP stack: CORS, security headers, RFC 7807 errors
-│   ├── retry.py                        # circuit breaker, bulkhead, exponential backoff
-│   ├── scanner.py                      # async directory scanner → seal pipeline
-│   ├── scheduler.py                    # APScheduler background jobs
-│   └── vault.py                        # PBKDF2 + HKDF key derivation, rotation
-├── docker-compose.yml                  # MongoDB + QUANTUM-PULSE, one command
-├── main.py                             # FastAPI app — all endpoints wired together
+│   ├── adaptive.py                       # AdaptiveDictManager — self-improving Zstd dict, retrains every 24h
+│   ├── audit.py                          # append-only audit log (JSONL + MongoDB)
+│   ├── auth.py                           # API-key + JWT auth, scope-based (read/write/admin)
+│   ├── compression.py                    # PulseCompressor — async Zstd-L22 wrapper + streaming
+│   ├── config.py                         # Pydantic Settings V2 — all config, secrets, validation
+│   ├── db.py                             # async MongoDB / GridFS persistence (motor)
+│   ├── engine.py                         # QuantumEngine — MsgPack→Zstd→AES-GCM→Merkle pipeline
+│   ├── health.py                         # Kubernetes liveness / readiness / startup probes
+│   ├── interface.py                      # FUSE-like virtual mount — sealed files, no plaintext on disk
+│   ├── metrics.py                        # Prometheus counters, histograms, gauges
+│   ├── middleware.py                     # security headers, request-id, timing, rate-limit
+│   ├── retry.py                          # circuit breaker, bulkhead, exponential backoff
+│   ├── scanner.py                        # high-speed filesystem scanner (os.scandir + threading)
+│   ├── scheduler.py                      # APScheduler — dict retrain, TTL cleanup, metrics flush
+│   └── vault.py                          # QuantumVault — PBKDF2-SHA256 + HKDF key derivation
 ├── models/
-│   └── pulse_models.py                 # Pydantic V2 models: PulseBlob, MasterPulse, …
-├── pyproject.toml                      # project metadata, ruff, mypy, coverage config
-├── requirements.txt
+│   └── pulse_models.py                   # Pydantic V2 models — PulseBlob, MasterPulse, CompressionStats
 ├── scripts/
-│   ├── benchmark_compare.py            # head-to-head vs snappy/lz4/gzip/brotli/zstd
-│   ├── benchmark_demo.py               # full seal/unseal/Merkle pipeline benchmark
-│   └── gen_corpus.py                   # reproducible LLM training corpus generator
-└── tests/
-    ├── test_api.py                     # 27 FastAPI integration tests (full HTTP stack)
-    ├── test_engine.py                  # 27 unit tests (core compression/crypto pipeline)
-    └── test_units.py                   # 223 unit tests (auth, middleware, vault, scheduler, …)
+│   ├── benchmark_compare.py              # head-to-head vs snappy / lz4 / gzip / brotli / zstd
+│   ├── benchmark_demo.py                 # reproduces README benchmark numbers
+│   ├── gen_corpus.py                     # generate synthetic LLM training corpus for testing
+│   └── verify_scheduler.py              # verify APScheduler dict retrain fires correctly
+├── tests/
+│   ├── test_api.py                       # 27 integration tests — full HTTP layer
+│   ├── test_engine.py                    # 27 unit tests — core seal/unseal/Merkle pipeline
+│   └── test_units.py                     # 223 extended unit tests — 81%+ coverage enforced
+├── .github/
+│   ├── CODEOWNERS                        # code ownership assignments
+│   ├── ISSUE_TEMPLATE/
+│   │   ├── benchmark.md                  # community benchmark submission template
+│   │   ├── bug_report.md                 # structured bug report
+│   │   ├── feature_request.md            # feature proposal
+│   │   └── security_audit_issue_template.md  # crypto audit / security review template
+│   ├── PULL_REQUEST_TEMPLATE.md          # PR checklist
+│   └── workflows/
+│       └── ci.yml                        # lint → unit-tests → api-tests → benchmark → docker-build
+├── cli.py                                # qp CLI — 12 commands, full offline seal/unseal
+├── main.py                               # FastAPI app entry point — all routes wired
+├── pyproject.toml                        # build config, dependencies, ruff/mypy/pytest/coverage
+├── requirements.txt                      # pinned deps for Docker / CI
+├── Makefile                              # make test / bench / lint / docker-up / run
+├── Dockerfile
+├── docker-compose.yml                    # MongoDB + API, one command start
+├── .env.example                          # all environment variables with defaults
+├── .pre-commit-config.yaml               # ruff + mypy pre-commit hooks
+├── .gitignore
+├── BENCHMARKS.md                         # full benchmark methodology and results
+├── CHANGELOG.md                          # version history
+├── CONTRIBUTING.md                       # contribution guide, design principles
+├── CODE_OF_CONDUCT.md
+├── LICENSE                               # MIT
+└── SECURITY.md                           # vulnerability reporting + audit status
 ```
 
 ---
@@ -245,20 +279,22 @@ quantum-pulse/
 **Security**
 - AES-256-GCM with hardware AES-NI
 - Per-blob HKDF-derived keys — one compromised blob reveals nothing else
-- PBKDF2-SHA256, 600,000 iterations
+- PBKDF2-SHA256, 600,000 iterations (Argon2id planned for v1.1)
 - SHA3-256 Merkle tree — every unseal is cryptographically verified
+- No formal third-party audit yet — see [SECURITY.md](SECURITY.md)
 
 **Operations**
 - FastAPI REST with OpenAPI docs at `/docs`
 - API-key + JWT auth, scope-based access (`read`/`write`/`admin`)
 - Prometheus metrics, Kubernetes health probes (`/healthz/live|ready|startup`)
 - Append-only audit log (JSONL file + MongoDB)
-- `qp` CLI with 12 commands
+- `qp` CLI with 12 commands, full offline mode
 
 **Developer Experience**
-- 277 tests (223 unit · 27 engine · 27 API integration)
+- 277 tests (27 engine unit · 27 API integration · 223 extended unit) — 81%+ coverage
 - `make test`, `make bench`, `make lint`, `make docker-up`
-- GitHub Actions CI out of the box
+- GitHub Actions CI — lint → unit-tests → api-tests → benchmark → docker-build
+- Pre-commit hooks — ruff + mypy on every commit
 
 ---
 
@@ -302,12 +338,23 @@ Full reference: [`.env.example`](.env.example) · [`core/config.py`](core/config
 ## Testing
 
 ```bash
-make test        # all 54 tests
+make test        # all 277 tests
 make test-unit   # core pipeline only
 make test-api    # HTTP layer only
 make test-cov    # with coverage report
 make bench       # full pipeline benchmark
 ```
+
+---
+
+## Patch History
+
+| Version | Change |
+|---------|--------|
+| v1.0.0 | Initial release |
+| v1.0.1 | Fixed build backend, added `qp seal --offline`, fixed CI coverage |
+| v1.0.2 | Wired `qp unseal --offline` — complete offline round-trip verified |
+| v1.0.3 | Published to PyPI — `pip install quantum-pulse` |
 
 ---
 
@@ -327,13 +374,15 @@ All contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Roadmap
 
 **Open Source**
-- [ ] S3 / GCS storage backend
+- [x] PyPI package — `pip install quantum-pulse`
+- [ ] Argon2id KDF (replacing PBKDF2-SHA256) — v1.1
+- [ ] S3 / GCS storage backend — v1.2
 - [ ] Streaming seal for files > 2 GB
 - [ ] OpenTelemetry tracing
 - [ ] Benchmark vs Apache Parquet + snappy
-- [ ] WASM build for browser-side sealing
 - [ ] Rust client SDK
 - [ ] Key rotation without re-sealing (re-wrap mode)
+- [ ] WASM build for browser-side sealing
 
 **Hosted (quantum-pulse.cloud)**
 - [ ] Managed API with metered billing (per GiB sealed)
