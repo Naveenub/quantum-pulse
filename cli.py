@@ -193,36 +193,85 @@ def seal(
 
 @app.command()
 def unseal(
-    pulse_id: str = typer.Argument(..., help="Pulse ID to decrypt"),
+    pulse_id: str = typer.Argument(
+        ...,
+        help="Pulse ID (MongoDB mode) or path to a .qp file (--offline mode)",
+    ),
     passphrase: str = typer.Option("", "--passphrase", "-p"),
     output: str | None = typer.Option(None, "--output", "-o", help="Output file path"),
+    offline: bool = typer.Option(
+        False, "--offline", help="Read from a .qp blob file instead of MongoDB"
+    ),
 ) -> None:
-    """Decrypt a pulse from the vault."""
+    """Decrypt a pulse from the vault.
+
+    Online (default): qp unseal <pulse-id>
+    Offline:          qp unseal dataset.qp --offline --passphrase "yourpass"
+    """
     if not passphrase:
         passphrase = _passphrase_prompt()
 
     async def _run():
         engine = _get_engine(passphrase)
-        db = _get_db(passphrase)
-        await db.connect()
 
-        with Progress(SpinnerColumn(), TextColumn("{task.description}"), console=console) as prog:
-            prog.add_task("Decrypting …", total=None)
-            blob, meta = await db.load_pulse(pulse_id)
-            payload = await engine.unseal(blob, meta)
+        if offline:
+            qp_path = Path(pulse_id)  # pulse_id arg holds the .qp file path in offline mode
+            if not qp_path.exists():
+                console.print(f"[red]File not found: {qp_path}[/red]")
+                raise typer.Exit(1)
+            if qp_path.suffix != ".qp":
+                console.print(
+                    f"[yellow]Warning: expected a .qp file, got {qp_path.suffix}[/yellow]"
+                )
 
-        if output:
-            raw = (
-                bytes(payload["data"])
-                if isinstance(payload.get("data"), list)
-                else json.dumps(payload).encode()
+            packed = qp_path.read_bytes()
+            record = _mp.unpackb(packed, raw=False)
+
+            blob = base64.b64decode(record["blob"])
+            from models.pulse_models import PulseBlob
+
+            meta = PulseBlob.model_validate_json(record["meta"])
+            recovered_pulse_id = record["pulse_id"]
+
+            with Progress(
+                SpinnerColumn(), TextColumn("{task.description}"), console=console
+            ) as prog:
+                prog.add_task("Decrypting (offline) …", total=None)
+                payload = await engine.unseal(blob, meta)
+
+            _write_payload(payload, output, console)
+            console.print(
+                f"[green]✅ Unsealed (offline)[/green]  pulse_id={recovered_pulse_id[:16]}…"
             )
-            Path(output).write_bytes(raw)
-            console.print(f"[green]Written to {output}[/green]")
+
         else:
-            console.print_json(json.dumps(payload, default=str))
+            db = _get_db(passphrase)
+            await db.connect()
+
+            with Progress(
+                SpinnerColumn(), TextColumn("{task.description}"), console=console
+            ) as prog:
+                prog.add_task("Decrypting …", total=None)
+                blob, meta = await db.load_pulse(pulse_id)
+                payload = await engine.unseal(blob, meta)
+
+            _write_payload(payload, output, console)
 
     asyncio.run(_run())
+
+
+def _write_payload(payload: dict, output: str | None, con: Console) -> None:
+    """Write unsealed payload to file or stdout."""
+    if output:
+        raw = (
+            bytes(payload["data"])
+            if isinstance(payload.get("data"), list)
+            else json.dumps(payload).encode()
+        )
+        Path(output).write_bytes(raw)
+        con.print(f"[green]Written to {output}[/green]")
+    else:
+        con.print_json(json.dumps(payload, default=str))
 
 
 # ─────────────────────────────── list ────────────────────────────────────── #
