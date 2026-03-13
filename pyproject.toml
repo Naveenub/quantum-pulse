@@ -10,11 +10,11 @@ include = ["core*", "models*"]
 
 [project]
 name        = "quantum-pulse"
-version     = "1.0.0"
+version     = "1.0.2"
 description = "Extreme-density data vault engine for LLM training sets"
 readme      = "README.md"
 requires-python = ">=3.12"
-license     = { text = "MIT" }
+license     = "MIT"
 
 keywords = ["compression", "encryption", "vault", "llm", "zstd", "aes"]
 
@@ -61,7 +61,7 @@ qp = "cli:app"
 [tool.pytest.ini_options]
 asyncio_mode    = "auto"
 testpaths       = ["tests"]
-addopts         = "-v --tb=short --cov=core --cov=models --cov-report=term-missing"
+addopts         = "-v --tb=short --cov=core --cov=models --cov-report=term-missing --cov-fail-under=75"
 filterwarnings  = [
     "ignore::DeprecationWarning",
     "ignore::PendingDeprecationWarning",
@@ -108,3 +108,4 @@ omit     = ["*/tests/*", "*/__pycache__/*"]
 show_missing = true
 skip_covered = false
 fail_under   = 75
+
