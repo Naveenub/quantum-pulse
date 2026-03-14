@@ -119,7 +119,7 @@ async def lifespan(app: FastAPI):
     os.makedirs(cfg.log_dir, exist_ok=True)
     logger.remove()
     fmt = (
-        '{{"time":"{time}","level":"{level}","msg":"{message}","file":"{file}:{line}"}}'
+        '{"time":"{time}","level":"{level}","msg":"{message}","file":"{file}:{line}"}'
         if cfg.log_format == "json"
         else "<green>{time:HH:mm:ss}</green> | <level>{level:<8}</level> | {message}"
     )
@@ -155,7 +155,7 @@ async def lifespan(app: FastAPI):
         )
         scheduler.register_ttl_cleanup(lambda: state.db, cfg.pulse_ttl_days)
         scheduler.register_metrics_snapshot(lambda: state.engine, lambda: state.db)
-        scheduler.register_dict_retrain(lambda: state.engine, lambda: state.db)
+        scheduler.register_dict_retrain(lambda: state.engine, lambda: state.db, interval_s=cfg.dict_retrain_interval_s)
         scheduler.start()
 
     mark_startup_complete()
