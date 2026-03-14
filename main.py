@@ -155,7 +155,9 @@ async def lifespan(app: FastAPI):
         )
         scheduler.register_ttl_cleanup(lambda: state.db, cfg.pulse_ttl_days)
         scheduler.register_metrics_snapshot(lambda: state.engine, lambda: state.db)
-        scheduler.register_dict_retrain(lambda: state.engine, lambda: state.db, interval_s=cfg.dict_retrain_interval_s)
+        scheduler.register_dict_retrain(
+            lambda: state.engine, lambda: state.db, interval_s=cfg.dict_retrain_interval_s
+        )
         scheduler.start()
 
     mark_startup_complete()
