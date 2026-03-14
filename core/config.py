@@ -80,7 +80,7 @@ class Settings(BaseSettings):
     mongo_retry_writes: bool = True
 
     # ── API Server ────────────────────────────────────────────────────────── #
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1"
     port: int = Field(default=8747, ge=1024, le=65535)
     workers: int = Field(default=1, ge=1, le=32)
     reload: bool = False
@@ -120,6 +120,7 @@ class Settings(BaseSettings):
     # ── Scheduler ─────────────────────────────────────────────────────────── #
     scheduler_enabled: bool = True
     health_check_interval_s: int = 30
+    dict_retrain_interval_s: int = Field(default=86400, ge=10, description="Dict retrain interval in seconds. Set to 30 for verification testing.")
 
     # ── Storage ───────────────────────────────────────────────────────────── #
     gridfs_threshold_mb: int = Field(default=16, ge=1, le=256)

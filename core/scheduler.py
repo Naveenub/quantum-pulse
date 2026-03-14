@@ -152,7 +152,7 @@ class QuantumScheduler:
 
                 stats = engine._adaptive.stats()
                 logger.info(
-                    "Scheduled dict retrain  v{}  buffer={}  total_seals={}",
+                    "[RETRAIN_FIRED] Scheduled dict retrain  v{}  buffer={}  total_seals={}",
                     stats["current_version"],
                     stats["buffer_size"],
                     stats["total_seals"],
@@ -166,7 +166,8 @@ class QuantumScheduler:
                 if result:
                     if result.committed:
                         logger.success(
-                            "Scheduled retrain committed  v{}→v{}  ratio {:.2f}×→{:.2f}×  +{:.1f}%",
+                            "[RETRAIN_VERIFIED] Scheduled retrain committed  "
+                            "v{}→v{}  ratio {:.2f}×→{:.2f}×  +{:.1f}%",
                             result.old_version,
                             result.new_version,
                             result.old_ratio,
@@ -175,7 +176,7 @@ class QuantumScheduler:
                         )
                     else:
                         logger.info(
-                            "Scheduled retrain: no improvement  "
+                            "[RETRAIN_VERIFIED] Scheduled retrain: no improvement  "
                             "{:.2f}×→{:.2f}×  {:.1f}%  keeping v{}",
                             result.old_ratio,
                             result.new_ratio,
