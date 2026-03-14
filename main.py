@@ -119,7 +119,7 @@ async def lifespan(app: FastAPI):
     os.makedirs(cfg.log_dir, exist_ok=True)
     logger.remove()
     fmt = (
-        '{"time":"{time}","level":"{level}","msg":"{message}","file":"{file}:{line}"}'
+        '{{"time":"{time}","level":"{level}","msg":"{message}","file":"{file}:{line}"}}'
         if cfg.log_format == "json"
         else "<green>{time:HH:mm:ss}</green> | <level>{level:<8}</level> | {message}"
     )
