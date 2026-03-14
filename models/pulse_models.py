@@ -18,6 +18,8 @@ class StorageBackend(StrEnum):
     MEMORY = "memory"
     MONGO = "mongo"
     GRIDFS = "gridfs"
+    S3 = "s3"
+    GCS = "gcs"
 
 
 class PulseStatus(StrEnum):

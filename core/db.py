@@ -32,6 +32,10 @@ import contextlib
 
 from models.pulse_models import MasterPulse, PulseBlob
 
+# Optional cloud backends — imported lazily to avoid hard dependency
+_S3Store = None
+_GCSStore = None
+
 # ─────────────────────────────── constants ────────────────────────────────── #
 
 GRIDFS_THRESHOLD = 16 * 1024 * 1024  # 16 MiB
@@ -100,18 +104,68 @@ class PulseDB:
         self,
         mongo_uri: str = "mongodb://localhost:27017",
         db_name: str = "quantum_pulse",
+        storage_backend: str = "mongo",
+        s3_bucket: str | None = None,
+        s3_prefix: str = "quantum-pulse",
+        s3_region: str | None = None,
+        s3_endpoint_url: str | None = None,
+        gcs_bucket: str | None = None,
+        gcs_prefix: str = "quantum-pulse",
+        gcs_service_file: str | None = None,
     ) -> None:
         self._uri = mongo_uri
         self._db_name = db_name
+        self._storage_backend = storage_backend
+        self._s3_cfg = {
+            "bucket": s3_bucket,
+            "prefix": s3_prefix,
+            "region": s3_region,
+            "endpoint_url": s3_endpoint_url,
+        }
+        self._gcs_cfg = {
+            "bucket": gcs_bucket,
+            "prefix": gcs_prefix,
+            "service_file": gcs_service_file,
+        }
         self._client: Any = None
         self._db: Any = None
         self._gfs: Any = None
         self._mem = _MemoryStore()
+        self._cloud: Any = None  # S3Store or GCSStore instance
         self._ready = False
 
     # ── lifecycle ─────────────────────────────────────────────────────────── #
 
     async def connect(self) -> bool:
+        # ── S3 backend ────────────────────────────────────────────────────── #
+        if self._storage_backend == "s3":
+            if not self._s3_cfg.get("bucket"):
+                raise ValueError("QUANTUM_S3_BUCKET must be set when QUANTUM_STORAGE_BACKEND=s3")
+            global _S3Store
+            if _S3Store is None:
+                from core.storage_s3 import S3Store
+
+                _S3Store = S3Store
+            self._cloud = _S3Store(**self._s3_cfg)
+            await self._cloud.connect()
+            self._ready = True
+            return True
+
+        # ── GCS backend ───────────────────────────────────────────────────── #
+        if self._storage_backend == "gcs":
+            if not self._gcs_cfg.get("bucket"):
+                raise ValueError("QUANTUM_GCS_BUCKET must be set when QUANTUM_STORAGE_BACKEND=gcs")
+            global _GCSStore
+            if _GCSStore is None:
+                from core.storage_gcs import GCSStore
+
+                _GCSStore = GCSStore
+            self._cloud = _GCSStore(**self._gcs_cfg)
+            await self._cloud.connect()
+            self._ready = True
+            return True
+
+        # ── MongoDB backend (default) ──────────────────────────────────────── #
         if not MOTOR_AVAILABLE:
             logger.warning("motor absent — using in-process MemoryStore")
             self._ready = True
@@ -146,6 +200,18 @@ class PulseDB:
     def is_mongo(self) -> bool:
         return self._client is not None
 
+    @property
+    def is_cloud(self) -> bool:
+        return self._cloud is not None
+
+    @property
+    def backend_name(self) -> str:
+        if self._cloud is not None:
+            return self._storage_backend
+        if self._client is not None:
+            return "mongo"
+        return "memory"
+
     # ── index setup ───────────────────────────────────────────────────────── #
 
     async def _ensure_indexes(self) -> None:
@@ -160,6 +226,8 @@ class PulseDB:
 
     async def save_pulse(self, pulse_id: str, blob: bytes, meta: PulseBlob) -> str:
         """Store blob + metadata.  Returns storage backend string."""
+        if self.is_cloud:
+            return await self._cloud.save_pulse(pulse_id, blob, meta)
         if not self.is_mongo:
             return await self._mem.save_pulse(pulse_id, blob, meta)
 
@@ -181,6 +249,8 @@ class PulseDB:
         return backend
 
     async def load_pulse(self, pulse_id: str) -> tuple[bytes, PulseBlob]:
+        if self.is_cloud:
+            return await self._cloud.load_pulse(pulse_id)
         if not self.is_mongo:
             return await self._mem.load_pulse(pulse_id)
 
@@ -202,6 +272,8 @@ class PulseDB:
         Only this shard's document is rewritten; MasterPulse is untouched
         until the caller rebuilds it.
         """
+        if self.is_cloud:
+            return await self._cloud.update_pulse(pulse_id, blob, meta)
         if not self.is_mongo:
             return await self._mem.update_pulse(pulse_id, blob, meta)
 
@@ -215,6 +287,8 @@ class PulseDB:
         logger.debug("Atomic update  pulse={}…", pulse_id[:8])
 
     async def delete_pulse(self, pulse_id: str) -> bool:
+        if self.is_cloud:
+            return await self._cloud.delete_pulse(pulse_id)
         if not self.is_mongo:
             return await self._mem.delete_pulse(pulse_id)
 
@@ -231,6 +305,8 @@ class PulseDB:
         limit: int = 100,
         skip: int = 0,
     ) -> list[dict]:
+        if self.is_cloud:
+            return await self._cloud.list_pulses(parent_id, limit, skip)
         if not self.is_mongo:
             return await self._mem.list_pulses(parent_id)
 
@@ -248,6 +324,8 @@ class PulseDB:
         return await cursor.to_list(length=limit)
 
     async def count_pulses(self) -> int:
+        if self.is_cloud:
+            return await self._cloud.count_pulses()
         if not self.is_mongo:
             return await self._mem.count_pulses()
         return await self._db[COLLECTION_META].count_documents({})
@@ -255,6 +333,8 @@ class PulseDB:
     # ── master pulse ──────────────────────────────────────────────────────── #
 
     async def save_master(self, master: MasterPulse) -> None:
+        if self.is_cloud:
+            return await self._cloud.save_master(master)
         if not self.is_mongo:
             return await self._mem.save_master(master)
         await self._db[COLLECTION_MASTER].replace_one(
@@ -262,6 +342,8 @@ class PulseDB:
         )
 
     async def load_master(self, master_id: str) -> MasterPulse:
+        if self.is_cloud:
+            return await self._cloud.load_master(master_id)
         if not self.is_mongo:
             return await self._mem.load_master(master_id)
         doc = await self._db[COLLECTION_MASTER].find_one({"master_id": master_id}, {"_id": 0})

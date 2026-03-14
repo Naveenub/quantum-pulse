@@ -126,7 +126,21 @@ class Settings(BaseSettings):
         description="Dict retrain interval in seconds. Set to 30 for verification testing.",
     )
 
-    # ── Storage ───────────────────────────────────────────────────────────── #
+    # ── Storage backend ───────────────────────────────────────────────────── #
+    storage_backend: str = Field(
+        default="mongo",
+        description="Storage backend: mongo | s3 | gcs",
+    )
+    # S3
+    s3_bucket: str | None = None
+    s3_prefix: str = "quantum-pulse"
+    s3_region: str | None = None
+    s3_endpoint_url: str | None = None  # MinIO / LocalStack / custom endpoint
+    # GCS
+    gcs_bucket: str | None = None
+    gcs_prefix: str = "quantum-pulse"
+    gcs_service_file: str | None = None  # path to service account JSON
+    # MongoDB / GridFS
     gridfs_threshold_mb: int = Field(default=16, ge=1, le=256)
     pulse_ttl_days: int | None = None  # None = never expire
 

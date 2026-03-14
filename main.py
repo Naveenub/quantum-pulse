@@ -135,7 +135,17 @@ async def lifespan(app: FastAPI):
     logger.add(lambda m: print(m, end=""), level=cfg.log_level.value, colorize=True)
     logger.info("━━━ QUANTUM-PULSE 1.0.0 ━━━  env={}", cfg.environment.value)
 
-    state.db = PulseDB(cfg.mongo_uri, cfg.mongo_db)
+    state.db = PulseDB(
+        mongo_uri=cfg.mongo_uri,
+        storage_backend=cfg.storage_backend,
+        s3_bucket=cfg.s3_bucket,
+        s3_prefix=cfg.s3_prefix,
+        s3_region=cfg.s3_region,
+        s3_endpoint_url=cfg.s3_endpoint_url,
+        gcs_bucket=cfg.gcs_bucket,
+        gcs_prefix=cfg.gcs_prefix,
+        gcs_service_file=cfg.gcs_service_file,
+    )
     state.engine = QuantumEngine(
         passphrase=cfg.passphrase.get_secret_value(), adaptive_dict=adaptive_dict
     )
