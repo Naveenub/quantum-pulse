@@ -2202,3 +2202,522 @@ class TestAuditMongo:
                                           pulse_id=f"p{i}"))
         records = await logger.query_recent(limit=5)
         assert len(records) == 5
+
+
+# ── S3 Storage Backend ───────────────────────────────────────────────────────
+
+class TestS3Store:
+    """Tests for S3Store using mocked aioboto3."""
+
+    def _make_store(self):
+        from core.storage_s3 import S3Store
+        store = S3Store.__new__(S3Store)
+        store._bucket = "test-bucket"
+        store._prefix = "quantum-pulse"
+        store._region = "us-east-1"
+        store._endpoint_url = None
+        store._session = MagicMock()
+        return store
+
+    def _make_pulse(self, pid="test-pulse-id-0001"):
+        from models.pulse_models import PulseBlob, CompressionStats
+        stats = CompressionStats(
+            original_bytes=100, packed_bytes=90, compressed_bytes=50,
+            encrypted_bytes=60, duration_ms=2.0,
+        )
+        return PulseBlob(
+            pulse_id=pid, parent_id=None, salt="aa" * 32, nonce="bb" * 12,
+            chunk_hash="cc" * 32, merkle_root="dd" * 32,
+            dict_version=0, stats=stats,
+        )
+
+    def test_blob_key(self):
+        store = self._make_store()
+        assert store._blob_key("abc") == "quantum-pulse/blobs/abc"
+
+    def test_meta_key(self):
+        store = self._make_store()
+        assert store._meta_key("abc") == "quantum-pulse/meta/abc.json"
+
+    def test_master_key(self):
+        store = self._make_store()
+        assert store._master_key("abc") == "quantum-pulse/masters/abc.json"
+
+    @pytest.mark.asyncio
+    async def test_save_pulse(self):
+        store = self._make_store()
+        meta = self._make_pulse()
+        blob = b"encrypted-blob-data"
+
+        mock_s3 = AsyncMock()
+        mock_s3.put_object = AsyncMock(return_value={})
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=mock_s3)
+        cm.__aexit__ = AsyncMock(return_value=False)
+        store._session.client = MagicMock(return_value=cm)
+
+        result = await store.save_pulse(meta.pulse_id, blob, meta)
+        assert result == "s3"
+        assert mock_s3.put_object.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_load_pulse(self):
+        store = self._make_store()
+        meta = self._make_pulse()
+        blob = b"encrypted-data"
+
+        blob_body = AsyncMock()
+        blob_body.read = AsyncMock(return_value=blob)
+        meta_body = AsyncMock()
+        meta_body.read = AsyncMock(return_value=meta.model_dump_json().encode())
+
+        mock_s3 = AsyncMock()
+        mock_s3.get_object = AsyncMock(side_effect=[
+            {"Body": blob_body},
+            {"Body": meta_body},
+        ])
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=mock_s3)
+        cm.__aexit__ = AsyncMock(return_value=False)
+        store._session.client = MagicMock(return_value=cm)
+
+        got_blob, got_meta = await store.load_pulse(meta.pulse_id)
+        assert got_blob == blob
+        assert got_meta.pulse_id == meta.pulse_id
+
+    @pytest.mark.asyncio
+    async def test_delete_pulse_existing(self):
+        store = self._make_store()
+        meta = self._make_pulse()
+
+        mock_s3 = AsyncMock()
+        mock_s3.head_object = AsyncMock(return_value={})
+        mock_s3.delete_object = AsyncMock(return_value={})
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=mock_s3)
+        cm.__aexit__ = AsyncMock(return_value=False)
+        store._session.client = MagicMock(return_value=cm)
+
+        result = await store.delete_pulse(meta.pulse_id)
+        assert result is True
+        assert mock_s3.delete_object.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_delete_pulse_nonexistent(self):
+        store = self._make_store()
+
+        mock_s3 = AsyncMock()
+        mock_s3.head_object = AsyncMock(side_effect=Exception("404 Not Found"))
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=mock_s3)
+        cm.__aexit__ = AsyncMock(return_value=False)
+        store._session.client = MagicMock(return_value=cm)
+
+        result = await store.delete_pulse("nonexistent")
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_count_pulses(self):
+        store = self._make_store()
+
+        paginator = AsyncMock()
+        page = {"Contents": [{"Key": "a"}, {"Key": "b"}, {"Key": "c"}]}
+
+        async def async_pages(*args, **kwargs):
+            yield page
+
+        paginator.paginate = MagicMock(return_value=async_pages())
+
+        mock_s3 = AsyncMock()
+        mock_s3.get_paginator = MagicMock(return_value=paginator)
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=mock_s3)
+        cm.__aexit__ = AsyncMock(return_value=False)
+        store._session.client = MagicMock(return_value=cm)
+
+        count = await store.count_pulses()
+        assert count == 3
+
+    @pytest.mark.asyncio
+    async def test_update_pulse_calls_save(self):
+        store = self._make_store()
+        meta = self._make_pulse()
+        blob = b"new-blob"
+
+        saved = []
+
+        async def mock_save(pid, b, m):
+            saved.append((pid, b, m))
+            return "s3"
+
+        store.save_pulse = mock_save
+        await store.update_pulse(meta.pulse_id, blob, meta)
+        assert len(saved) == 1
+        assert saved[0][1] == blob
+
+    @pytest.mark.asyncio
+    async def test_save_master(self):
+        from models.pulse_models import MasterPulse
+        store = self._make_store()
+        master = MasterPulse(
+            master_id="master-001", shard_ids=["p1", "p2"],
+            merkle_tree=["ee"*32, "ff"*32], merkle_root="ee" * 32,
+            total_original_bytes=100, total_shards=2,
+        )
+        mock_s3 = AsyncMock()
+        mock_s3.put_object = AsyncMock(return_value={})
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=mock_s3)
+        cm.__aexit__ = AsyncMock(return_value=False)
+        store._session.client = MagicMock(return_value=cm)
+
+        await store.save_master(master)
+        mock_s3.put_object.assert_called_once()
+
+    def test_import_error_without_aioboto3(self):
+        import sys
+        aioboto3_backup = sys.modules.get("aioboto3")
+        sys.modules["aioboto3"] = None  # type: ignore
+        try:
+            import importlib
+            import core.storage_s3 as s3mod
+            importlib.reload(s3mod)
+            with pytest.raises(ImportError, match="aioboto3"):
+                s3mod.S3Store(bucket="b")
+        finally:
+            if aioboto3_backup is not None:
+                sys.modules["aioboto3"] = aioboto3_backup
+            else:
+                sys.modules.pop("aioboto3", None)
+
+
+# ── GCS Storage Backend ──────────────────────────────────────────────────────
+
+class TestGCSStore:
+    """Tests for GCSStore using mocked gcloud-aio-storage."""
+
+    def _make_store(self):
+        from core.storage_gcs import GCSStore
+        store = GCSStore.__new__(GCSStore)
+        store._bucket = "test-gcs-bucket"
+        store._prefix = "quantum-pulse"
+        store._service_file = None
+        return store
+
+    def _make_pulse(self, pid="gcs-pulse-id-0001"):
+        from models.pulse_models import PulseBlob, CompressionStats
+        stats = CompressionStats(
+            original_bytes=100, packed_bytes=90, compressed_bytes=50,
+            encrypted_bytes=60, duration_ms=2.0,
+        )
+        return PulseBlob(
+            pulse_id=pid, parent_id=None, salt="aa" * 32, nonce="bb" * 12,
+            chunk_hash="cc" * 32, merkle_root="dd" * 32,
+            dict_version=0, stats=stats,
+        )
+
+    def test_blob_key(self):
+        store = self._make_store()
+        assert store._blob_key("abc") == "quantum-pulse/blobs/abc"
+
+    def test_meta_key(self):
+        store = self._make_store()
+        assert store._meta_key("abc") == "quantum-pulse/meta/abc.json"
+
+    def test_master_key(self):
+        store = self._make_store()
+        assert store._master_key("abc") == "quantum-pulse/masters/abc.json"
+
+    def test_storage_kwargs_no_service_file(self):
+        store = self._make_store()
+        assert store._storage_kwargs() == {}
+
+    def test_storage_kwargs_with_service_file(self):
+        store = self._make_store()
+        store._service_file = "/path/to/key.json"
+        assert store._storage_kwargs() == {"service_file": "/path/to/key.json"}
+
+    @pytest.mark.asyncio
+    async def test_save_pulse(self):
+        store = self._make_store()
+        meta = self._make_pulse()
+        blob = b"gcs-encrypted-blob"
+
+        mock_storage = AsyncMock()
+        mock_storage.upload = AsyncMock(return_value={})
+        mock_session = AsyncMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("core.storage_gcs.aiohttp") as mock_aiohttp, \
+             patch("core.storage_gcs.Storage") as MockStorage:
+            mock_aiohttp.ClientSession.return_value = mock_session
+            MockStorage.return_value = mock_storage
+            result = await store.save_pulse(meta.pulse_id, blob, meta)
+
+        assert result == "gcs"
+        assert mock_storage.upload.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_load_pulse(self):
+        store = self._make_store()
+        meta = self._make_pulse()
+        blob = b"gcs-blob-data"
+
+        mock_storage = AsyncMock()
+        mock_storage.download = AsyncMock(side_effect=[
+            blob,
+            meta.model_dump_json().encode(),
+        ])
+        mock_session = AsyncMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("core.storage_gcs.aiohttp") as mock_aiohttp, \
+             patch("core.storage_gcs.Storage") as MockStorage:
+            mock_aiohttp.ClientSession.return_value = mock_session
+            MockStorage.return_value = mock_storage
+            got_blob, got_meta = await store.load_pulse(meta.pulse_id)
+
+        assert got_blob == blob
+        assert got_meta.pulse_id == meta.pulse_id
+
+    @pytest.mark.asyncio
+    async def test_load_pulse_not_found(self):
+        store = self._make_store()
+
+        mock_storage = AsyncMock()
+        mock_storage.download = AsyncMock(side_effect=Exception("404 Not Found"))
+        mock_session = AsyncMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("core.storage_gcs.aiohttp") as mock_aiohttp, \
+             patch("core.storage_gcs.Storage") as MockStorage:
+            mock_aiohttp.ClientSession.return_value = mock_session
+            MockStorage.return_value = mock_storage
+            with pytest.raises(KeyError):
+                await store.load_pulse("missing-pulse")
+
+    @pytest.mark.asyncio
+    async def test_delete_pulse_existing(self):
+        store = self._make_store()
+        meta = self._make_pulse()
+
+        mock_storage = AsyncMock()
+        mock_storage.delete = AsyncMock(return_value={})
+        mock_session = AsyncMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("core.storage_gcs.aiohttp") as mock_aiohttp, \
+             patch("core.storage_gcs.Storage") as MockStorage:
+            mock_aiohttp.ClientSession.return_value = mock_session
+            MockStorage.return_value = mock_storage
+            result = await store.delete_pulse(meta.pulse_id)
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_delete_pulse_not_found(self):
+        store = self._make_store()
+
+        mock_storage = AsyncMock()
+        mock_storage.delete = AsyncMock(side_effect=Exception("404 does not exist"))
+        mock_session = AsyncMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("core.storage_gcs.aiohttp") as mock_aiohttp, \
+             patch("core.storage_gcs.Storage") as MockStorage:
+            mock_aiohttp.ClientSession.return_value = mock_session
+            MockStorage.return_value = mock_storage
+            result = await store.delete_pulse("gone")
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_count_pulses(self):
+        store = self._make_store()
+
+        mock_storage = AsyncMock()
+        mock_storage.list_objects = AsyncMock(return_value={
+            "items": [{"name": "a"}, {"name": "b"}]
+        })
+        mock_session = AsyncMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("core.storage_gcs.aiohttp") as mock_aiohttp, \
+             patch("core.storage_gcs.Storage") as MockStorage:
+            mock_aiohttp.ClientSession.return_value = mock_session
+            MockStorage.return_value = mock_storage
+            count = await store.count_pulses()
+
+        assert count == 2
+
+    @pytest.mark.asyncio
+    async def test_update_pulse_calls_save(self):
+        store = self._make_store()
+        meta = self._make_pulse()
+        blob = b"updated-blob"
+        saved = []
+
+        async def mock_save(pid, b, m):
+            saved.append((pid, b, m))
+            return "gcs"
+
+        store.save_pulse = mock_save
+        await store.update_pulse(meta.pulse_id, blob, meta)
+        assert saved[0][1] == blob
+
+    @pytest.mark.asyncio
+    async def test_save_and_load_master(self):
+        from models.pulse_models import MasterPulse
+        store = self._make_store()
+        master = MasterPulse(
+            master_id="gcs-master-001", shard_ids=["p1"],
+            merkle_tree=["ff"*32], merkle_root="ff" * 32,
+            total_original_bytes=50, total_shards=1,
+        )
+        mock_storage = AsyncMock()
+        mock_storage.upload = AsyncMock(return_value={})
+        mock_storage.download = AsyncMock(return_value=master.model_dump_json().encode())
+        mock_session = AsyncMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("core.storage_gcs.aiohttp") as mock_aiohttp, \
+             patch("core.storage_gcs.Storage") as MockStorage:
+            mock_aiohttp.ClientSession.return_value = mock_session
+            MockStorage.return_value = mock_storage
+            await store.save_master(master)
+            got = await store.load_master(master.master_id)
+
+        assert got.master_id == master.master_id
+
+    def test_import_error_without_gcloud(self):
+        import sys
+        backup_aiohttp = sys.modules.get("aiohttp")
+        backup_gcloud = sys.modules.get("gcloud.aio.storage")
+        sys.modules["gcloud.aio.storage"] = None  # type: ignore
+        try:
+            import importlib
+            import core.storage_gcs as gcsmod
+            importlib.reload(gcsmod)
+            with pytest.raises(ImportError, match="gcloud-aio-storage"):
+                gcsmod.GCSStore(bucket="b")
+        finally:
+            if backup_aiohttp is not None:
+                sys.modules["aiohttp"] = backup_aiohttp
+            if backup_gcloud is not None:
+                sys.modules["gcloud.aio.storage"] = backup_gcloud
+            else:
+                sys.modules.pop("gcloud.aio.storage", None)
+
+
+# ── PulseDB cloud routing ─────────────────────────────────────────────────────
+
+class TestPulseDBCloudRouting:
+    """Tests for PulseDB routing to S3/GCS backends."""
+
+    def _make_db_with_mock_cloud(self, backend_name="s3"):
+        from core.db import PulseDB
+        db = PulseDB.__new__(PulseDB)
+        db._storage_backend = backend_name
+        db._client = None
+        db._db = None
+        db._gfs = None
+        db._ready = True
+        db._mem = MagicMock()
+        mock_cloud = AsyncMock()
+        mock_cloud.save_pulse = AsyncMock(return_value=backend_name)
+        mock_cloud.load_pulse = AsyncMock(return_value=(b"blob", MagicMock()))
+        mock_cloud.update_pulse = AsyncMock()
+        mock_cloud.delete_pulse = AsyncMock(return_value=True)
+        mock_cloud.list_pulses = AsyncMock(return_value=[])
+        mock_cloud.count_pulses = AsyncMock(return_value=5)
+        mock_cloud.save_master = AsyncMock()
+        mock_cloud.load_master = AsyncMock(return_value=MagicMock())
+        db._cloud = mock_cloud
+        return db, mock_cloud
+
+    def test_is_cloud_true(self):
+        db, _ = self._make_db_with_mock_cloud()
+        assert db.is_cloud is True
+
+    def test_is_mongo_false_when_cloud(self):
+        db, _ = self._make_db_with_mock_cloud()
+        assert db.is_mongo is False
+
+    def test_backend_name_s3(self):
+        db, _ = self._make_db_with_mock_cloud("s3")
+        assert db.backend_name == "s3"
+
+    def test_backend_name_gcs(self):
+        db, _ = self._make_db_with_mock_cloud("gcs")
+        assert db.backend_name == "gcs"
+
+    def test_backend_name_memory(self):
+        from core.db import PulseDB
+        db = PulseDB.__new__(PulseDB)
+        db._client = None
+        db._cloud = None
+        db._storage_backend = "memory"
+        assert db.backend_name == "memory"
+
+    @pytest.mark.asyncio
+    async def test_save_pulse_routes_to_cloud(self):
+        from models.pulse_models import PulseBlob, CompressionStats
+        db, mock_cloud = self._make_db_with_mock_cloud()
+        stats = CompressionStats(
+            original_bytes=10, packed_bytes=9, compressed_bytes=5,
+            encrypted_bytes=6, duration_ms=2.0,
+        )
+        meta = PulseBlob(
+            pulse_id="p1", salt="aa"*32, nonce="bb"*12,
+            chunk_hash="cc"*32, merkle_root="dd"*32, dict_version=0, stats=stats,
+        )
+        result = await db.save_pulse("p1", b"blob", meta)
+        mock_cloud.save_pulse.assert_awaited_once()
+        assert result == "s3"
+
+    @pytest.mark.asyncio
+    async def test_load_pulse_routes_to_cloud(self):
+        db, mock_cloud = self._make_db_with_mock_cloud()
+        await db.load_pulse("p1")
+        mock_cloud.load_pulse.assert_awaited_once_with("p1")
+
+    @pytest.mark.asyncio
+    async def test_delete_pulse_routes_to_cloud(self):
+        db, mock_cloud = self._make_db_with_mock_cloud()
+        result = await db.delete_pulse("p1")
+        mock_cloud.delete_pulse.assert_awaited_once_with("p1")
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_count_pulses_routes_to_cloud(self):
+        db, mock_cloud = self._make_db_with_mock_cloud()
+        count = await db.count_pulses()
+        mock_cloud.count_pulses.assert_awaited_once()
+        assert count == 5
+
+    @pytest.mark.asyncio
+    async def test_list_pulses_routes_to_cloud(self):
+        db, mock_cloud = self._make_db_with_mock_cloud()
+        result = await db.list_pulses()
+        mock_cloud.list_pulses.assert_awaited_once()
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_save_master_routes_to_cloud(self):
+        db, mock_cloud = self._make_db_with_mock_cloud()
+        master = MagicMock()
+        await db.save_master(master)
+        mock_cloud.save_master.assert_awaited_once_with(master)
+
+    @pytest.mark.asyncio
+    async def test_load_master_routes_to_cloud(self):
+        db, mock_cloud = self._make_db_with_mock_cloud()
+        await db.load_master("m1")
+        mock_cloud.load_master.assert_awaited_once_with("m1")
