@@ -91,9 +91,10 @@ jobs:
           docker run -d \
             -e QUANTUM_PASSPHRASE="${{ env.QUANTUM_PASSPHRASE }}" \
             -e QUANTUM_ENVIRONMENT=development \
+            -e QUANTUM_HOST=0.0.0.0 \
             -p 8747:8747 \
             --name qp-test \
             quantum-pulse:${{ github.sha }}
-          sleep 5
+          sleep 8
           curl -f http://localhost:8747/health || (docker logs qp-test && exit 1)
           docker stop qp-test
