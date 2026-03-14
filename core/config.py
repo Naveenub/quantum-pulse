@@ -120,7 +120,11 @@ class Settings(BaseSettings):
     # ── Scheduler ─────────────────────────────────────────────────────────── #
     scheduler_enabled: bool = True
     health_check_interval_s: int = 30
-    dict_retrain_interval_s: int = Field(default=86400, ge=10, description="Dict retrain interval in seconds. Set to 30 for verification testing.")
+    dict_retrain_interval_s: int = Field(
+        default=86400,
+        ge=10,
+        description="Dict retrain interval in seconds. Set to 30 for verification testing.",
+    )
 
     # ── Storage ───────────────────────────────────────────────────────────── #
     gridfs_threshold_mb: int = Field(default=16, ge=1, le=256)
