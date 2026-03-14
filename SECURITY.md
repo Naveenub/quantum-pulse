@@ -50,7 +50,7 @@ This is disclosed in the README, all release notes, and every post about this pr
 ### What exists instead
 
 - **CRYPTO_REVIEW.md** — a single file documenting all cryptographic code, exact parameters, and specific open questions: [`CRYPTO_REVIEW.md`](CRYPTO_REVIEW.md)
-- **Community review thread** — open GitHub Discussion inviting public cryptographic review: [Community Crypto Review — QUANTUM-PULSE v1.0.3](https://github.com/Naveenub/quantum-pulse/discussions/5#discussion-9642706)
+- **Community review thread** — open GitHub Discussion inviting public cryptographic review: [Community Crypto Review — QUANTUM-PULSE v1.0.5](https://github.com/Naveenub/quantum-pulse/discussions/5#discussion-9642706)
 - **Standard primitives only** — PBKDF2-SHA256, HKDF, AES-256-GCM, SHA3-256 via PyCA `cryptography` library. No hand-rolled crypto.
 
 ### Known gaps
