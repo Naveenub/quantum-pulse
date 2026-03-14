@@ -217,4 +217,4 @@ These are documented in `README.md`, `SECURITY.md`, and every GitHub release:
 
 Security issues: see [SECURITY.md](SECURITY.md). Private reporting is set up via GitHub Security Advisories.
 
-Public discussion: [GitHub Discussions](../../discussions) — community review thread.
+Public discussion: [Community Crypto Review — QUANTUM-PULSE v1.0.5](https://github.com/Naveenub/quantum-pulse/discussions/5#discussion-9642706)
