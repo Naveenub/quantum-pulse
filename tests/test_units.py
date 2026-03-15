@@ -2449,9 +2449,8 @@ class TestGCSStore:
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("core.storage_gcs.aiohttp") as mock_aiohttp, \
+        with patch("aiohttp.ClientSession", return_value=mock_session), \
              patch("core.storage_gcs.Storage") as MockStorage:
-            mock_aiohttp.ClientSession.return_value = mock_session
             MockStorage.return_value = mock_storage
             result = await store.save_pulse(meta.pulse_id, blob, meta)
 
@@ -2473,9 +2472,8 @@ class TestGCSStore:
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("core.storage_gcs.aiohttp") as mock_aiohttp, \
+        with patch("aiohttp.ClientSession", return_value=mock_session), \
              patch("core.storage_gcs.Storage") as MockStorage:
-            mock_aiohttp.ClientSession.return_value = mock_session
             MockStorage.return_value = mock_storage
             got_blob, got_meta = await store.load_pulse(meta.pulse_id)
 
@@ -2492,9 +2490,8 @@ class TestGCSStore:
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("core.storage_gcs.aiohttp") as mock_aiohttp, \
+        with patch("aiohttp.ClientSession", return_value=mock_session), \
              patch("core.storage_gcs.Storage") as MockStorage:
-            mock_aiohttp.ClientSession.return_value = mock_session
             MockStorage.return_value = mock_storage
             with pytest.raises(KeyError):
                 await store.load_pulse("missing-pulse")
@@ -2510,9 +2507,8 @@ class TestGCSStore:
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("core.storage_gcs.aiohttp") as mock_aiohttp, \
+        with patch("aiohttp.ClientSession", return_value=mock_session), \
              patch("core.storage_gcs.Storage") as MockStorage:
-            mock_aiohttp.ClientSession.return_value = mock_session
             MockStorage.return_value = mock_storage
             result = await store.delete_pulse(meta.pulse_id)
 
@@ -2528,9 +2524,8 @@ class TestGCSStore:
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("core.storage_gcs.aiohttp") as mock_aiohttp, \
+        with patch("aiohttp.ClientSession", return_value=mock_session), \
              patch("core.storage_gcs.Storage") as MockStorage:
-            mock_aiohttp.ClientSession.return_value = mock_session
             MockStorage.return_value = mock_storage
             result = await store.delete_pulse("gone")
 
@@ -2548,9 +2543,8 @@ class TestGCSStore:
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("core.storage_gcs.aiohttp") as mock_aiohttp, \
+        with patch("aiohttp.ClientSession", return_value=mock_session), \
              patch("core.storage_gcs.Storage") as MockStorage:
-            mock_aiohttp.ClientSession.return_value = mock_session
             MockStorage.return_value = mock_storage
             count = await store.count_pulses()
 
@@ -2587,9 +2581,8 @@ class TestGCSStore:
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("core.storage_gcs.aiohttp") as mock_aiohttp, \
+        with patch("aiohttp.ClientSession", return_value=mock_session), \
              patch("core.storage_gcs.Storage") as MockStorage:
-            mock_aiohttp.ClientSession.return_value = mock_session
             MockStorage.return_value = mock_storage
             await store.save_master(master)
             got = await store.load_master(master.master_id)
