@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import sys
 import time
 import uuid
 from pathlib import Path
@@ -17,6 +18,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import msgpack
 import pytest
+
+# Inject stub aiohttp at module level so patch("aiohttp.ClientSession") works
+# even when gcloud-aio-storage is not installed in CI.
+if "aiohttp" not in sys.modules or sys.modules["aiohttp"] is None:
+    sys.modules["aiohttp"] = MagicMock()
 
 
 def _make_sample(n: int = 0) -> bytes:
