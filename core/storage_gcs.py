@@ -31,9 +31,14 @@ from loguru import logger
 
 from models.pulse_models import MasterPulse, PulseBlob
 
+# Always define Storage at module level so patch("core.storage_gcs.Storage") works
+# even when gcloud-aio-storage is not installed.
+Storage = None  # type: ignore
+aiohttp = None  # type: ignore
+
 try:
-    import aiohttp  # type: ignore
-    from gcloud.aio.storage import Storage  # type: ignore
+    import aiohttp  # type: ignore  # noqa: F811
+    from gcloud.aio.storage import Storage  # type: ignore  # noqa: F811
 
     GCS_AVAILABLE = True
 except ImportError:
