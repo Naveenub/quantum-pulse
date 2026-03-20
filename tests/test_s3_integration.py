@@ -29,8 +29,14 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sys
 import time
 import uuid
+from pathlib import Path
+
+# Ensure repo root is on sys.path so `core` and `models` are importable
+# regardless of how pytest is invoked.
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pytest
 import pytest_asyncio
