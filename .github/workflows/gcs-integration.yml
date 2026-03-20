@@ -1,7 +1,5 @@
 name: GCS Integration Tests
 
-# Runs on push/PR to main when GCS-related files change.
-# Separate from main CI so a fake-gcs-server issue doesn't block merges.
 on:
   push:
     branches: [main, develop]
@@ -25,31 +23,12 @@ env:
   PYTHON_VERSION: "3.12"
   GCS_ENDPOINT_URL: http://localhost:4443
   GCS_TEST_BUCKET: quantum-pulse-test
-  # fake-gcs-server needs STORAGE_EMULATOR_HOST without scheme
   STORAGE_EMULATOR_HOST: localhost:4443
 
 jobs:
   gcs-integration:
     name: GCS Integration Tests (fake-gcs-server)
     runs-on: ubuntu-latest
-
-    services:
-      fake-gcs:
-        image: fsouza/fake-gcs-server:latest
-        ports:
-          - "4443:4443"
-        options: >-
-          --health-cmd "curl -sf http://localhost:4443/storage/v1/b"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-        # Run in HTTP mode on port 4443 with public-host for correct URLs
-        env:
-          # Passed via command args below — service containers don't support CMD override
-          # so we use the entrypoint env vars supported by fake-gcs-server
-          PORT: "4443"
-          SCHEME: "http"
-          PUBLIC_HOST: "localhost:4443"
 
     steps:
       - uses: actions/checkout@v4
@@ -64,6 +43,19 @@ jobs:
           pip install -r requirements.txt
           pip install gcloud-aio-storage aiohttp
 
+      # Run fake-gcs-server as a background docker container so we control
+      # the startup flags (HTTP mode, correct port, public-host).
+      # Service containers do not support CMD overrides, so we use docker run.
+      - name: Start fake-gcs-server
+        run: |
+          docker run -d \
+            --name fake-gcs \
+            -p 4443:4443 \
+            fsouza/fake-gcs-server:latest \
+            -scheme http \
+            -port 4443 \
+            -public-host localhost:4443
+
       - name: Wait for fake-gcs-server
         run: |
           echo "Waiting for fake-gcs-server..."
@@ -75,6 +67,7 @@ jobs:
             echo "Attempt $i — waiting 3s..."
             sleep 3
           done
+          curl -sf http://localhost:4443/storage/v1/b || (docker logs fake-gcs && exit 1)
 
       - name: Create test bucket
         run: |
@@ -94,3 +87,7 @@ jobs:
           GCS_ENDPOINT_URL: http://localhost:4443
           GCS_TEST_BUCKET: quantum-pulse-test
           STORAGE_EMULATOR_HOST: localhost:4443
+
+      - name: Dump fake-gcs logs on failure
+        if: failure()
+        run: docker logs fake-gcs
