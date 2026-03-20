@@ -16,9 +16,9 @@
 
 <div align="center">
 
-![QUANTUM-PULSE demo — seal & unseal live](assets/quantum_pulse_demo.gif)
+![QUANTUM-PULSE demo — seal & unseal live](assets/quantum_pulse_demo_v3.gif)
 
-▶ [Full 26s demo video](assets/quantum_pulse_promo.mp4) &nbsp;·&nbsp; [⭐ Star on GitHub](https://github.com/Naveenub/quantum-pulse)
+▶ [Full 26s demo video](assets/quantum_pulse_promo_v3.mp4) &nbsp;·&nbsp; [⭐ Star on GitHub](https://github.com/Naveenub/quantum-pulse)
 
 **`pip install quantum-pulse`  →  `qp seal dataset.json --offline`  →  39× compression + AES-256-GCM**
 
