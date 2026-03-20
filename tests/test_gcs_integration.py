@@ -119,10 +119,10 @@ async def gcs_store():
     yield store
 
     # Teardown: delete all test objects
-    api_root = f"{ENDPOINT}/storage/v1"
+    # api_root = bare host; gcloud-aio-storage appends /storage/v1 internally
     async with aiohttp.ClientSession() as session:
         try:
-            storage = Storage(session=session, api_root=api_root)
+            storage = Storage(session=session, api_root=ENDPOINT)
             response = await storage.list_objects(
                 BUCKET, params={"prefix": "qp-test/"}
             )
@@ -136,10 +136,12 @@ async def gcs_store():
 
 
 def _storage(session: aiohttp.ClientSession) -> Storage:
-    """Return a Storage client pointed at fake-gcs-server."""
+    """Return a Storage client pointed at fake-gcs-server.
+    api_root must be the bare host — gcloud-aio-storage appends /storage/v1 itself.
+    """
     return Storage(
         session=session,
-        api_root=f"{ENDPOINT}/storage/v1",
+        api_root=ENDPOINT,
     )
 
 
