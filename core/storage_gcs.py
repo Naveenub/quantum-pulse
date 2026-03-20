@@ -98,11 +98,12 @@ class GCSStore:
         kwargs: dict = {}
         if self._service_file:
             kwargs["service_file"] = self._service_file
-        # Support STORAGE_EMULATOR_HOST for fake-gcs-server / CI integration tests
+        # Support STORAGE_EMULATOR_HOST for fake-gcs-server / CI integration tests.
+        # api_root must be the bare host — gcloud-aio-storage appends /storage/v1 itself.
         emulator = os.environ.get("STORAGE_EMULATOR_HOST")
         if emulator:
             scheme = "http" if "localhost" in emulator or "127.0.0.1" in emulator else "https"
-            kwargs["api_root"] = f"{scheme}://{emulator}/storage/v1"
+            kwargs["api_root"] = f"{scheme}://{emulator}"
         return kwargs
 
     # ── pulse CRUD ────────────────────────────────────────────────────────── #
