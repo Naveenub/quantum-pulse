@@ -24,6 +24,8 @@ Environment variables
 
 from __future__ import annotations
 
+import os
+
 import contextlib
 import json
 
@@ -94,9 +96,14 @@ class GCSStore:
         return f"{self._prefix}/masters/{master_id}.json"
 
     def _storage_kwargs(self) -> dict:
-        kwargs = {}
+        kwargs: dict = {}
         if self._service_file:
             kwargs["service_file"] = self._service_file
+        # Support STORAGE_EMULATOR_HOST for fake-gcs-server / CI integration tests
+        emulator = os.environ.get("STORAGE_EMULATOR_HOST")
+        if emulator:
+            scheme = "http" if "localhost" in emulator or "127.0.0.1" in emulator else "https"
+            kwargs["api_root"] = f"{scheme}://{emulator}/storage/v1"
         return kwargs
 
     # ── pulse CRUD ────────────────────────────────────────────────────────── #
